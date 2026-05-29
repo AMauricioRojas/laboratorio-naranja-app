@@ -14,7 +14,7 @@ import {
 
 const API = "https://multi-ia-alexa-backend.onrender.com";
 
-type ViewMode = "chat" | "history" | "alexa";
+type ViewMode = "chat" | "history" | "alexa" | "survey";
 
 export default function App() {
   const [token, setToken] = useState<string | null>(null);
@@ -33,6 +33,13 @@ export default function App() {
   const [conversations, setConversations] = useState<any[]>([]);
   const [alexaStatus, setAlexaStatus] = useState<any>(null);
   const [surveyStatus, setSurveyStatus] = useState<any>(null);
+
+  const [surveyClarity, setSurveyClarity] = useState(5);
+  const [surveyCompleteness, setSurveyCompleteness] = useState(5);
+  const [surveyUsefulness, setSurveyUsefulness] = useState(5);
+  const [surveyPreferred, setSurveyPreferred] = useState(true);
+  const [surveyBestAi, setSurveyBestAi] = useState("auto");
+  const [surveyComments, setSurveyComments] = useState("");
 
   useEffect(() => {
     bootstrap();
@@ -58,7 +65,9 @@ export default function App() {
       Authorization: authToken || "",
     };
 
-    if (json) headers["Content-Type"] = "application/json";
+    if (json) {
+      headers["Content-Type"] = "application/json";
+    }
 
     return headers;
   }
@@ -137,6 +146,7 @@ export default function App() {
     setConversations([]);
     setAlexaStatus(null);
     setConversationId(null);
+    setView("chat");
   }
 
   async function loadDashboard(authToken = token) {
@@ -194,6 +204,66 @@ export default function App() {
       setSurveyStatus(data);
     } catch (error) {
       console.log("Survey status error", error);
+    }
+  }
+
+  async function submitSurvey() {
+    setWorking(true);
+
+    try {
+      const res = await fetch(`${API}/survey/submit`, {
+        method: "POST",
+        headers: authHeaders(token, true),
+        body: JSON.stringify({
+          clarity: surveyClarity,
+          completeness: surveyCompleteness,
+          usefulness: surveyUsefulness,
+          preferred_use: surveyPreferred,
+          best_ai: surveyBestAi,
+          comments: surveyComments.trim(),
+        }),
+      });
+
+      const data = await res.json();
+
+      if (data.ok) {
+        Alert.alert("Gracias", "Tu encuesta fue guardada correctamente.");
+        setSurveyComments("");
+        await loadSurveyStatus();
+        setView("chat");
+      } else {
+        Alert.alert("Error", data.error || "No se pudo guardar la encuesta.");
+      }
+    } catch (error) {
+      Alert.alert("Error", "No se pudo conectar con el servidor.");
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  async function dismissSurvey() {
+    setWorking(true);
+
+    try {
+      const res = await fetch(`${API}/survey/dismiss`, {
+        method: "POST",
+        headers: authHeaders(token, true),
+        body: JSON.stringify({}),
+      });
+
+      const data = await res.json();
+
+      if (data.ok) {
+        Alert.alert("Listo", "La encuesta se pospuso por 7 días.");
+        await loadSurveyStatus();
+        setView("chat");
+      } else {
+        Alert.alert("Error", data.error || "No se pudo posponer.");
+      }
+    } catch (error) {
+      Alert.alert("Error", "No se pudo conectar con el servidor.");
+    } finally {
+      setWorking(false);
     }
   }
 
@@ -393,6 +463,40 @@ export default function App() {
     });
   }
 
+  function renderScoreSelector(
+    label: string,
+    value: number,
+    setter: (value: number) => void
+  ) {
+    return (
+      <View style={styles.surveyBlock}>
+        <Text style={styles.cardLabel}>{label}</Text>
+
+        <View style={styles.scoreRow}>
+          {[1, 2, 3, 4, 5].map((score) => (
+            <Pressable
+              key={score}
+              style={[
+                styles.scoreButton,
+                value === score && styles.scoreButtonActive,
+              ]}
+              onPress={() => setter(score)}
+            >
+              <Text
+                style={[
+                  styles.scoreText,
+                  value === score && styles.scoreTextActive,
+                ]}
+              >
+                {score}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      </View>
+    );
+  }
+
   if (loading) {
     return (
       <SafeAreaView style={styles.center}>
@@ -430,11 +534,21 @@ export default function App() {
             secureTextEntry
           />
 
-          <Pressable style={styles.primaryButton} onPress={login} disabled={working}>
-            <Text style={styles.buttonText}>{working ? "Cargando..." : "Entrar"}</Text>
+          <Pressable
+            style={styles.primaryButton}
+            onPress={login}
+            disabled={working}
+          >
+            <Text style={styles.buttonText}>
+              {working ? "Cargando..." : "Entrar"}
+            </Text>
           </Pressable>
 
-          <Pressable style={styles.secondaryButton} onPress={register} disabled={working}>
+          <Pressable
+            style={styles.secondaryButton}
+            onPress={register}
+            disabled={working}
+          >
             <Text style={styles.buttonText}>Crear cuenta</Text>
           </Pressable>
         </View>
@@ -476,6 +590,13 @@ export default function App() {
         >
           <Text style={styles.navText}>Alexa</Text>
         </Pressable>
+
+        <Pressable
+          style={[styles.navBtn, view === "survey" && styles.navActive]}
+          onPress={() => setView("survey")}
+        >
+          <Text style={styles.navText}>Encuesta</Text>
+        </Pressable>
       </View>
 
       {view === "chat" && (
@@ -486,22 +607,26 @@ export default function App() {
             </Pressable>
 
             <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              {["auto", "chatgpt", "groq_fast", "groq_power", "gemini"].map((item) => (
-                <Pressable
-                  key={item}
-                  style={[styles.iaChip, ia === item && styles.iaChipActive]}
-                  onPress={() => setIa(item)}
-                >
-                  <Text style={styles.iaChipText}>{getIaLabel(item)}</Text>
-                </Pressable>
-              ))}
+              {["auto", "chatgpt", "groq_fast", "groq_power", "gemini"].map(
+                (item) => (
+                  <Pressable
+                    key={item}
+                    style={[styles.iaChip, ia === item && styles.iaChipActive]}
+                    onPress={() => setIa(item)}
+                  >
+                    <Text style={styles.iaChipText}>{getIaLabel(item)}</Text>
+                  </Pressable>
+                )
+              )}
             </ScrollView>
           </View>
 
           <ScrollView style={styles.messages}>
             {chatMessages.length === 0 ? (
               <View style={styles.emptyBox}>
-                <Text style={styles.emptyTitle}>Haz una pregunta desde el móvil</Text>
+                <Text style={styles.emptyTitle}>
+                  Haz una pregunta desde el móvil
+                </Text>
                 <Text style={styles.emptyText}>
                   También puedes preguntarle a Alexa y luego ver el historial aquí.
                 </Text>
@@ -553,7 +678,11 @@ export default function App() {
               multiline
             />
 
-            <Pressable style={styles.sendButton} onPress={sendMessage} disabled={working}>
+            <Pressable
+              style={styles.sendButton}
+              onPress={sendMessage}
+              disabled={working}
+            >
               <Text style={styles.sendText}>{working ? "..." : "Enviar"}</Text>
             </Pressable>
           </View>
@@ -564,7 +693,10 @@ export default function App() {
         <ScrollView style={styles.content}>
           <Text style={styles.sectionTitle}>Historial</Text>
 
-          <Pressable style={styles.refreshButton} onPress={() => loadConversations()}>
+          <Pressable
+            style={styles.refreshButton}
+            onPress={() => loadConversations()}
+          >
             <Text style={styles.refreshText}>Refrescar historial</Text>
           </Pressable>
 
@@ -577,8 +709,12 @@ export default function App() {
                 style={styles.historyItem}
                 onPress={() => openConversation(item.conversation_id)}
               >
-                <Text style={styles.historySource}>{getSourceLabel(item.source)}</Text>
-                <Text style={styles.historyTitle}>{item.titulo || "Chat sin título"}</Text>
+                <Text style={styles.historySource}>
+                  {getSourceLabel(item.source)}
+                </Text>
+                <Text style={styles.historyTitle}>
+                  {item.titulo || "Chat sin título"}
+                </Text>
               </Pressable>
             ))
           )}
@@ -592,28 +728,45 @@ export default function App() {
           <View style={styles.alexaCard}>
             <Text style={styles.cardLabel}>Estado</Text>
             <Text style={styles.statusText}>
-              {alexaStatus?.linked ? "✅ Alexa vinculada" : "❌ Alexa no vinculada"}
+              {alexaStatus?.linked
+                ? "✅ Alexa vinculada"
+                : "❌ Alexa no vinculada"}
             </Text>
 
             {alexaStatus?.active_pair_code && (
               <>
                 <Text style={styles.cardLabel}>Código temporal</Text>
-                <Text style={styles.codeText}>{alexaStatus.active_pair_code.code}</Text>
+                <Text style={styles.codeText}>
+                  {alexaStatus.active_pair_code.code}
+                </Text>
                 <Text style={styles.mutedText}>
-                  Dile a Alexa: mi código es {alexaStatus.active_pair_code.code}
+                  Dile a Alexa: mi código es{" "}
+                  {alexaStatus.active_pair_code.code}
                 </Text>
               </>
             )}
 
-            <Pressable style={styles.primaryButton} onPress={generateAlexaCode} disabled={working}>
+            <Pressable
+              style={styles.primaryButton}
+              onPress={generateAlexaCode}
+              disabled={working}
+            >
               <Text style={styles.buttonText}>Generar código Alexa</Text>
             </Pressable>
 
-            <Pressable style={styles.secondaryButton} onPress={() => loadAlexaStatus()} disabled={working}>
+            <Pressable
+              style={styles.secondaryButton}
+              onPress={() => loadAlexaStatus()}
+              disabled={working}
+            >
               <Text style={styles.buttonText}>Refrescar estado</Text>
             </Pressable>
 
-            <Pressable style={styles.dangerButton} onPress={unlinkAlexa} disabled={working}>
+            <Pressable
+              style={styles.dangerButton}
+              onPress={unlinkAlexa}
+              disabled={working}
+            >
               <Text style={styles.buttonText}>Desvincular Alexa</Text>
             </Pressable>
           </View>
@@ -622,10 +775,161 @@ export default function App() {
             <View style={styles.noticeBox}>
               <Text style={styles.noticeTitle}>📊 Encuesta disponible</Text>
               <Text style={styles.mutedText}>
-                Ya puedes responder la encuesta desde la web. Luego la agregamos completa en la app.
+                Ya puedes responder la encuesta desde la pestaña Encuesta.
               </Text>
             </View>
           )}
+        </ScrollView>
+      )}
+
+      {view === "survey" && (
+        <ScrollView style={styles.content}>
+          <Text style={styles.sectionTitle}>Encuesta de experiencia</Text>
+
+          <View style={styles.alexaCard}>
+            <Text style={styles.statusText}>
+              📊 Evaluación de respuestas con IA
+            </Text>
+
+            <Text style={styles.mutedText}>
+              Esta encuesta ayuda a medir si Alexa mejora al conectarse con
+              modelos de inteligencia artificial.
+            </Text>
+
+            {surveyStatus?.should_show ? (
+              <Text style={styles.surveyHint}>
+                La encuesta ya está disponible por uso suficiente.
+              </Text>
+            ) : (
+              <Text style={styles.surveyHint}>
+                Puedes responderla en modo prueba. La regla real es después de 3
+                días o 8 preguntas por Alexa.
+              </Text>
+            )}
+
+            {renderScoreSelector(
+              "Claridad de las respuestas",
+              surveyClarity,
+              setSurveyClarity
+            )}
+
+            {renderScoreSelector(
+              "Qué tan completas fueron",
+              surveyCompleteness,
+              setSurveyCompleteness
+            )}
+
+            {renderScoreSelector(
+              "Utilidad general",
+              surveyUsefulness,
+              setSurveyUsefulness
+            )}
+
+            <View style={styles.surveyBlock}>
+              <Text style={styles.cardLabel}>
+                ¿Preferirías usar Alexa con este sistema?
+              </Text>
+
+              <View style={styles.optionRow}>
+                <Pressable
+                  style={[
+                    styles.optionChip,
+                    surveyPreferred && styles.optionChipActive,
+                  ]}
+                  onPress={() => setSurveyPreferred(true)}
+                >
+                  <Text
+                    style={[
+                      styles.optionText,
+                      surveyPreferred && styles.optionTextActive,
+                    ]}
+                  >
+                    Sí
+                  </Text>
+                </Pressable>
+
+                <Pressable
+                  style={[
+                    styles.optionChip,
+                    !surveyPreferred && styles.optionChipActive,
+                  ]}
+                  onPress={() => setSurveyPreferred(false)}
+                >
+                  <Text
+                    style={[
+                      styles.optionText,
+                      !surveyPreferred && styles.optionTextActive,
+                    ]}
+                  >
+                    No
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+
+            <View style={styles.surveyBlock}>
+              <Text style={styles.cardLabel}>¿Qué IA te gustó más?</Text>
+
+              <View style={styles.optionGrid}>
+                {[
+                  ["auto", "Auto"],
+                  ["chatgpt", "ChatGPT"],
+                  ["groq_fast", "Groq rápido"],
+                  ["groq_power", "Groq potente"],
+                  ["gemini", "Gemini"],
+                ].map(([value, label]) => (
+                  <Pressable
+                    key={value}
+                    style={[
+                      styles.optionChip,
+                      surveyBestAi === value && styles.optionChipActive,
+                    ]}
+                    onPress={() => setSurveyBestAi(value)}
+                  >
+                    <Text
+                      style={[
+                        styles.optionText,
+                        surveyBestAi === value && styles.optionTextActive,
+                      ]}
+                    >
+                      {label}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+
+            <View style={styles.surveyBlock}>
+              <Text style={styles.cardLabel}>Comentario opcional</Text>
+
+              <TextInput
+                style={styles.textArea}
+                placeholder="Escribe algún comentario..."
+                placeholderTextColor="#64748b"
+                value={surveyComments}
+                onChangeText={setSurveyComments}
+                multiline
+              />
+            </View>
+
+            <Pressable
+              style={styles.primaryButton}
+              onPress={submitSurvey}
+              disabled={working}
+            >
+              <Text style={styles.buttonText}>
+                {working ? "Guardando..." : "Enviar encuesta"}
+              </Text>
+            </Pressable>
+
+            <Pressable
+              style={styles.secondaryButton}
+              onPress={dismissSurvey}
+              disabled={working}
+            >
+              <Text style={styles.buttonText}>Posponer 7 días</Text>
+            </Pressable>
+          </View>
         </ScrollView>
       )}
     </SafeAreaView>
@@ -756,6 +1060,7 @@ const styles = StyleSheet.create({
   navText: {
     color: "white",
     fontWeight: "bold",
+    fontSize: 12,
   },
   content: {
     flex: 1,
@@ -945,5 +1250,76 @@ const styles = StyleSheet.create({
     color: "#92400e",
     fontWeight: "bold",
     marginBottom: 6,
+  },
+  surveyBlock: {
+    marginTop: 14,
+  },
+  scoreRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 8,
+  },
+  scoreButton: {
+    flex: 1,
+    backgroundColor: "#e2e8f0",
+    paddingVertical: 11,
+    borderRadius: 12,
+    alignItems: "center",
+  },
+  scoreButtonActive: {
+    backgroundColor: "#2563eb",
+  },
+  scoreText: {
+    color: "#0f172a",
+    fontWeight: "bold",
+  },
+  scoreTextActive: {
+    color: "white",
+  },
+  optionRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 8,
+  },
+  optionGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: 8,
+  },
+  optionChip: {
+    backgroundColor: "#e2e8f0",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 999,
+  },
+  optionChipActive: {
+    backgroundColor: "#2563eb",
+  },
+  optionText: {
+    color: "#0f172a",
+    fontWeight: "bold",
+  },
+  optionTextActive: {
+    color: "white",
+  },
+  textArea: {
+    minHeight: 90,
+    backgroundColor: "#f8fafc",
+    borderWidth: 1,
+    borderColor: "#cbd5e1",
+    borderRadius: 14,
+    padding: 12,
+    textAlignVertical: "top",
+    color: "#0f172a",
+    marginTop: 8,
+  },
+  surveyHint: {
+    color: "#92400e",
+    backgroundColor: "#fef3c7",
+    padding: 10,
+    borderRadius: 12,
+    marginTop: 12,
+    lineHeight: 20,
   },
 });
