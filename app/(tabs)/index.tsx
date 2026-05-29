@@ -1,98 +1,949 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import React, { useEffect, useState } from "react";
+import {
+  ActivityIndicator,
+  Alert,
+  Pressable,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
 
-import { HelloWave } from '@/components/hello-wave';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Link } from 'expo-router';
+const API = "https://multi-ia-alexa-backend.onrender.com";
 
-export default function HomeScreen() {
+type ViewMode = "chat" | "history" | "alexa";
+
+export default function App() {
+  const [token, setToken] = useState<string | null>(null);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+
+  const [loading, setLoading] = useState(true);
+  const [working, setWorking] = useState(false);
+
+  const [view, setView] = useState<ViewMode>("chat");
+  const [ia, setIa] = useState("auto");
+  const [message, setMessage] = useState("");
+  const [conversationId, setConversationId] = useState<string | null>(null);
+
+  const [chatMessages, setChatMessages] = useState<any[]>([]);
+  const [conversations, setConversations] = useState<any[]>([]);
+  const [alexaStatus, setAlexaStatus] = useState<any>(null);
+  const [surveyStatus, setSurveyStatus] = useState<any>(null);
+
+  useEffect(() => {
+    bootstrap();
+  }, []);
+
+  async function bootstrap() {
+    try {
+      const savedToken = await AsyncStorage.getItem("token");
+
+      if (savedToken) {
+        setToken(savedToken);
+        await loadDashboard(savedToken);
+      }
+    } catch (error) {
+      console.log(error);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function authHeaders(authToken = token, json = false) {
+    const headers: any = {
+      Authorization: authToken || "",
+    };
+
+    if (json) headers["Content-Type"] = "application/json";
+
+    return headers;
+  }
+
+  async function login() {
+    if (!email.trim() || !password.trim()) {
+      Alert.alert("Faltan datos", "Escribe usuario/email y contraseña.");
+      return;
+    }
+
+    setWorking(true);
+
+    try {
+      const res = await fetch(`${API}/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: email.trim(),
+          password: password.trim(),
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!data.token) {
+        Alert.alert("Error", data.error || "No se pudo iniciar sesión.");
+        return;
+      }
+
+      await AsyncStorage.setItem("token", data.token);
+      setToken(data.token);
+      await loadDashboard(data.token);
+    } catch (error) {
+      Alert.alert("Error", "No se pudo conectar con el servidor.");
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  async function register() {
+    if (!email.trim() || !password.trim()) {
+      Alert.alert("Faltan datos", "Escribe usuario/email y contraseña.");
+      return;
+    }
+
+    setWorking(true);
+
+    try {
+      const res = await fetch(`${API}/register`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: email.trim(),
+          password: password.trim(),
+        }),
+      });
+
+      const data = await res.json();
+
+      if (data.ok) {
+        Alert.alert("Listo", "Usuario creado. Ahora inicia sesión.");
+      } else {
+        Alert.alert("Error", data.error || "No se pudo crear usuario.");
+      }
+    } catch (error) {
+      Alert.alert("Error", "No se pudo conectar con el servidor.");
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  async function logout() {
+    await AsyncStorage.removeItem("token");
+    setToken(null);
+    setChatMessages([]);
+    setConversations([]);
+    setAlexaStatus(null);
+    setConversationId(null);
+  }
+
+  async function loadDashboard(authToken = token) {
+    if (!authToken) return;
+
+    await Promise.all([
+      loadAlexaStatus(authToken),
+      loadConversations(authToken),
+      loadSurveyStatus(authToken),
+    ]);
+  }
+
+  async function loadAlexaStatus(authToken = token) {
+    if (!authToken) return;
+
+    try {
+      const res = await fetch(`${API}/alexa/status`, {
+        headers: authHeaders(authToken),
+      });
+
+      const data = await res.json();
+      setAlexaStatus(data);
+    } catch (error) {
+      console.log("Alexa status error", error);
+    }
+  }
+
+  async function loadConversations(authToken = token) {
+    if (!authToken) return;
+
+    try {
+      const res = await fetch(`${API}/conversaciones`, {
+        headers: authHeaders(authToken),
+      });
+
+      const data = await res.json();
+
+      if (Array.isArray(data)) {
+        setConversations(data);
+      }
+    } catch (error) {
+      console.log("Conversations error", error);
+    }
+  }
+
+  async function loadSurveyStatus(authToken = token) {
+    if (!authToken) return;
+
+    try {
+      const res = await fetch(`${API}/survey/status`, {
+        headers: authHeaders(authToken),
+      });
+
+      const data = await res.json();
+      setSurveyStatus(data);
+    } catch (error) {
+      console.log("Survey status error", error);
+    }
+  }
+
+  async function generateAlexaCode() {
+    setWorking(true);
+
+    try {
+      const res = await fetch(`${API}/alexa/generate-code`, {
+        method: "POST",
+        headers: authHeaders(token, true),
+        body: JSON.stringify({}),
+      });
+
+      const data = await res.json();
+
+      if (data.ok) {
+        Alert.alert(
+          "Código Alexa",
+          `Tu código es ${data.code}. Dile a Alexa: mi código es ${data.code}`
+        );
+        await loadAlexaStatus();
+      } else {
+        Alert.alert("Error", data.error || "No se pudo generar código.");
+      }
+    } catch (error) {
+      Alert.alert("Error", "No se pudo conectar con el servidor.");
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  async function unlinkAlexa() {
+    Alert.alert("Desvincular Alexa", "¿Seguro que quieres desvincular Alexa?", [
+      { text: "Cancelar", style: "cancel" },
+      {
+        text: "Desvincular",
+        style: "destructive",
+        onPress: async () => {
+          setWorking(true);
+
+          try {
+            const res = await fetch(`${API}/alexa/unlink`, {
+              method: "DELETE",
+              headers: authHeaders(),
+            });
+
+            const data = await res.json();
+
+            if (data.ok) {
+              Alert.alert("Listo", "Alexa desvinculada.");
+              await loadAlexaStatus();
+            } else {
+              Alert.alert("Error", data.error || "No se pudo desvincular.");
+            }
+          } catch (error) {
+            Alert.alert("Error", "No se pudo conectar con el servidor.");
+          } finally {
+            setWorking(false);
+          }
+        },
+      },
+    ]);
+  }
+
+  async function sendMessage() {
+    const text = message.trim();
+
+    if (!text) return;
+
+    const userMsg = {
+      role: "user",
+      mensaje: text,
+      source: "mobile",
+      created_at: new Date().toISOString(),
+    };
+
+    setChatMessages((prev) => [...prev, userMsg]);
+    setMessage("");
+    setWorking(true);
+
+    try {
+      const res = await fetch(`${API}/preguntar`, {
+        method: "POST",
+        headers: authHeaders(token, true),
+        body: JSON.stringify({
+          mensaje: text,
+          ia,
+          conversation_id: conversationId,
+          source: "mobile",
+        }),
+      });
+
+      const data = await res.json();
+
+      if (data.error) {
+        setChatMessages((prev) => [
+          ...prev,
+          {
+            role: "ai",
+            mensaje: data.error,
+            ia: "error",
+            source: "mobile",
+            created_at: new Date().toISOString(),
+          },
+        ]);
+        return;
+      }
+
+      setConversationId(data.conversation_id);
+
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          role: "ai",
+          mensaje: data.respuesta,
+          ia: data.ia,
+          source: data.source || "mobile",
+          created_at: new Date().toISOString(),
+        },
+      ]);
+
+      await loadConversations();
+      await loadSurveyStatus();
+    } catch (error) {
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          role: "ai",
+          mensaje: "No se pudo conectar con el servidor.",
+          ia: "error",
+          source: "mobile",
+          created_at: new Date().toISOString(),
+        },
+      ]);
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  async function openConversation(id: string) {
+    setConversationId(id);
+    setView("chat");
+    setWorking(true);
+
+    try {
+      const res = await fetch(`${API}/historial/${id}`, {
+        headers: authHeaders(),
+      });
+
+      const data = await res.json();
+
+      if (Array.isArray(data)) {
+        setChatMessages(data);
+      }
+    } catch (error) {
+      Alert.alert("Error", "No se pudo cargar el historial.");
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  function newChat() {
+    setConversationId(null);
+    setChatMessages([]);
+    setView("chat");
+  }
+
+  function getSourceLabel(source: string) {
+    if (source === "alexa") return "🔊 Alexa";
+    if (source === "mobile") return "📱 Móvil";
+    return "🌐 Web";
+  }
+
+  function getIaLabel(value: string) {
+    const labels: any = {
+      auto: "Auto",
+      chatgpt: "ChatGPT",
+      groq_fast: "Groq rápido",
+      groq_power: "Groq potente",
+      gemini: "Gemini",
+      error: "Error",
+    };
+
+    return labels[value] || value || "IA";
+  }
+
+  function formatDate(value: string) {
+    if (!value) return "";
+
+    const date = new Date(value);
+
+    if (Number.isNaN(date.getTime())) return "";
+
+    return date.toLocaleString("es-MX", {
+      dateStyle: "short",
+      timeStyle: "short",
+    });
+  }
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.center}>
+        <ActivityIndicator size="large" />
+        <Text style={styles.loadingText}>Cargando Laboratorio Naranja...</Text>
+      </SafeAreaView>
+    );
+  }
+
+  if (!token) {
+    return (
+      <SafeAreaView style={styles.login}>
+        <View style={styles.loginCard}>
+          <Text style={styles.logo}>🍊</Text>
+          <Text style={styles.title}>Laboratorio Naranja</Text>
+          <Text style={styles.subtitle}>
+            Conecta Alexa con IA y consulta tu historial desde el móvil.
+          </Text>
+
+          <TextInput
+            style={styles.input}
+            placeholder="Email o usuario"
+            placeholderTextColor="#94a3b8"
+            value={email}
+            onChangeText={setEmail}
+            autoCapitalize="none"
+          />
+
+          <TextInput
+            style={styles.input}
+            placeholder="Contraseña"
+            placeholderTextColor="#94a3b8"
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry
+          />
+
+          <Pressable style={styles.primaryButton} onPress={login} disabled={working}>
+            <Text style={styles.buttonText}>{working ? "Cargando..." : "Entrar"}</Text>
+          </Pressable>
+
+          <Pressable style={styles.secondaryButton} onPress={register} disabled={working}>
+            <Text style={styles.buttonText}>Crear cuenta</Text>
+          </Pressable>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <Link href="/modal">
-          <Link.Trigger>
-            <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-          </Link.Trigger>
-          <Link.Preview />
-          <Link.Menu>
-            <Link.MenuAction title="Action" icon="cube" onPress={() => alert('Action pressed')} />
-            <Link.MenuAction
-              title="Share"
-              icon="square.and.arrow.up"
-              onPress={() => alert('Share pressed')}
-            />
-            <Link.Menu title="More" icon="ellipsis">
-              <Link.MenuAction
-                title="Delete"
-                icon="trash"
-                destructive
-                onPress={() => alert('Delete pressed')}
-              />
-            </Link.Menu>
-          </Link.Menu>
-        </Link>
+    <SafeAreaView style={styles.app}>
+      <View style={styles.topBar}>
+        <View>
+          <Text style={styles.appTitle}>🍊 Laboratorio Naranja</Text>
+          <Text style={styles.appSubtitle}>Alexa + Multi IA + Historial</Text>
+        </View>
 
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+        <Pressable onPress={logout} style={styles.logoutButton}>
+          <Text style={styles.logoutText}>Salir</Text>
+        </Pressable>
+      </View>
+
+      <View style={styles.nav}>
+        <Pressable
+          style={[styles.navBtn, view === "chat" && styles.navActive]}
+          onPress={() => setView("chat")}
+        >
+          <Text style={styles.navText}>Chat</Text>
+        </Pressable>
+
+        <Pressable
+          style={[styles.navBtn, view === "history" && styles.navActive]}
+          onPress={() => setView("history")}
+        >
+          <Text style={styles.navText}>Historial</Text>
+        </Pressable>
+
+        <Pressable
+          style={[styles.navBtn, view === "alexa" && styles.navActive]}
+          onPress={() => setView("alexa")}
+        >
+          <Text style={styles.navText}>Alexa</Text>
+        </Pressable>
+      </View>
+
+      {view === "chat" && (
+        <View style={styles.content}>
+          <View style={styles.chatHeader}>
+            <Pressable style={styles.smallButton} onPress={newChat}>
+              <Text style={styles.smallButtonText}>Nuevo</Text>
+            </Pressable>
+
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              {["auto", "chatgpt", "groq_fast", "groq_power", "gemini"].map((item) => (
+                <Pressable
+                  key={item}
+                  style={[styles.iaChip, ia === item && styles.iaChipActive]}
+                  onPress={() => setIa(item)}
+                >
+                  <Text style={styles.iaChipText}>{getIaLabel(item)}</Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          </View>
+
+          <ScrollView style={styles.messages}>
+            {chatMessages.length === 0 ? (
+              <View style={styles.emptyBox}>
+                <Text style={styles.emptyTitle}>Haz una pregunta desde el móvil</Text>
+                <Text style={styles.emptyText}>
+                  También puedes preguntarle a Alexa y luego ver el historial aquí.
+                </Text>
+              </View>
+            ) : (
+              chatMessages.map((item, index) => (
+                <View
+                  key={`${item.created_at}-${index}`}
+                  style={[
+                    styles.bubble,
+                    item.role === "user" ? styles.userBubble : styles.aiBubble,
+                  ]}
+                >
+                  {item.role !== "user" && (
+                    <Text style={styles.bubbleMeta}>
+                      {getIaLabel(item.ia)} · {getSourceLabel(item.source)}
+                    </Text>
+                  )}
+
+                  <Text
+                    style={[
+                      styles.bubbleText,
+                      item.role === "user" && styles.userBubbleText,
+                    ]}
+                  >
+                    {item.mensaje}
+                  </Text>
+
+                  <Text
+                    style={[
+                      styles.timeText,
+                      item.role === "user" && styles.userTimeText,
+                    ]}
+                  >
+                    {formatDate(item.created_at)}
+                  </Text>
+                </View>
+              ))
+            )}
+          </ScrollView>
+
+          <View style={styles.sendBox}>
+            <TextInput
+              style={styles.messageInput}
+              placeholder="Escribe tu pregunta..."
+              placeholderTextColor="#64748b"
+              value={message}
+              onChangeText={setMessage}
+              multiline
+            />
+
+            <Pressable style={styles.sendButton} onPress={sendMessage} disabled={working}>
+              <Text style={styles.sendText}>{working ? "..." : "Enviar"}</Text>
+            </Pressable>
+          </View>
+        </View>
+      )}
+
+      {view === "history" && (
+        <ScrollView style={styles.content}>
+          <Text style={styles.sectionTitle}>Historial</Text>
+
+          <Pressable style={styles.refreshButton} onPress={() => loadConversations()}>
+            <Text style={styles.refreshText}>Refrescar historial</Text>
+          </Pressable>
+
+          {conversations.length === 0 ? (
+            <Text style={styles.mutedText}>No hay conversaciones todavía.</Text>
+          ) : (
+            conversations.map((item) => (
+              <Pressable
+                key={item.conversation_id}
+                style={styles.historyItem}
+                onPress={() => openConversation(item.conversation_id)}
+              >
+                <Text style={styles.historySource}>{getSourceLabel(item.source)}</Text>
+                <Text style={styles.historyTitle}>{item.titulo || "Chat sin título"}</Text>
+              </Pressable>
+            ))
+          )}
+        </ScrollView>
+      )}
+
+      {view === "alexa" && (
+        <ScrollView style={styles.content}>
+          <Text style={styles.sectionTitle}>Conexión con Alexa</Text>
+
+          <View style={styles.alexaCard}>
+            <Text style={styles.cardLabel}>Estado</Text>
+            <Text style={styles.statusText}>
+              {alexaStatus?.linked ? "✅ Alexa vinculada" : "❌ Alexa no vinculada"}
+            </Text>
+
+            {alexaStatus?.active_pair_code && (
+              <>
+                <Text style={styles.cardLabel}>Código temporal</Text>
+                <Text style={styles.codeText}>{alexaStatus.active_pair_code.code}</Text>
+                <Text style={styles.mutedText}>
+                  Dile a Alexa: mi código es {alexaStatus.active_pair_code.code}
+                </Text>
+              </>
+            )}
+
+            <Pressable style={styles.primaryButton} onPress={generateAlexaCode} disabled={working}>
+              <Text style={styles.buttonText}>Generar código Alexa</Text>
+            </Pressable>
+
+            <Pressable style={styles.secondaryButton} onPress={() => loadAlexaStatus()} disabled={working}>
+              <Text style={styles.buttonText}>Refrescar estado</Text>
+            </Pressable>
+
+            <Pressable style={styles.dangerButton} onPress={unlinkAlexa} disabled={working}>
+              <Text style={styles.buttonText}>Desvincular Alexa</Text>
+            </Pressable>
+          </View>
+
+          {surveyStatus?.should_show && (
+            <View style={styles.noticeBox}>
+              <Text style={styles.noticeTitle}>📊 Encuesta disponible</Text>
+              <Text style={styles.mutedText}>
+                Ya puedes responder la encuesta desde la web. Luego la agregamos completa en la app.
+              </Text>
+            </View>
+          )}
+        </ScrollView>
+      )}
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  titleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  center: {
+    flex: 1,
+    backgroundColor: "#020617",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  loadingText: {
+    color: "white",
+    marginTop: 12,
+  },
+  login: {
+    flex: 1,
+    backgroundColor: "#020617",
+    justifyContent: "center",
+    padding: 20,
+  },
+  loginCard: {
+    backgroundColor: "#111827",
+    borderRadius: 22,
+    padding: 22,
+  },
+  logo: {
+    fontSize: 48,
+    textAlign: "center",
+  },
+  title: {
+    color: "white",
+    fontSize: 28,
+    fontWeight: "bold",
+    textAlign: "center",
+  },
+  subtitle: {
+    color: "#94a3b8",
+    textAlign: "center",
+    marginTop: 8,
+    marginBottom: 16,
+    lineHeight: 20,
+  },
+  input: {
+    backgroundColor: "#020617",
+    borderColor: "#334155",
+    borderWidth: 1,
+    color: "white",
+    padding: 13,
+    borderRadius: 12,
+    marginTop: 10,
+  },
+  primaryButton: {
+    backgroundColor: "#2563eb",
+    padding: 13,
+    borderRadius: 12,
+    marginTop: 12,
+    alignItems: "center",
+  },
+  secondaryButton: {
+    backgroundColor: "#334155",
+    padding: 13,
+    borderRadius: 12,
+    marginTop: 10,
+    alignItems: "center",
+  },
+  dangerButton: {
+    backgroundColor: "#7f1d1d",
+    padding: 13,
+    borderRadius: 12,
+    marginTop: 10,
+    alignItems: "center",
+  },
+  buttonText: {
+    color: "white",
+    fontWeight: "bold",
+  },
+  app: {
+    flex: 1,
+    backgroundColor: "#f8fafc",
+  },
+  topBar: {
+    backgroundColor: "#020617",
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  appTitle: {
+    color: "white",
+    fontSize: 20,
+    fontWeight: "bold",
+  },
+  appSubtitle: {
+    color: "#94a3b8",
+    fontSize: 12,
+    marginTop: 2,
+  },
+  logoutButton: {
+    backgroundColor: "#7f1d1d",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+  },
+  logoutText: {
+    color: "white",
+    fontWeight: "bold",
+  },
+  nav: {
+    flexDirection: "row",
+    backgroundColor: "#111827",
+    padding: 8,
     gap: 8,
   },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
+  navBtn: {
+    flex: 1,
+    padding: 10,
+    borderRadius: 12,
+    alignItems: "center",
+    backgroundColor: "#1f2937",
   },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
+  navActive: {
+    backgroundColor: "#2563eb",
+  },
+  navText: {
+    color: "white",
+    fontWeight: "bold",
+  },
+  content: {
+    flex: 1,
+    padding: 14,
+  },
+  chatHeader: {
+    flexDirection: "row",
+    gap: 8,
+    alignItems: "center",
+    marginBottom: 10,
+  },
+  smallButton: {
+    backgroundColor: "#020617",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 10,
+  },
+  smallButtonText: {
+    color: "white",
+    fontWeight: "bold",
+  },
+  iaChip: {
+    backgroundColor: "#e2e8f0",
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: 999,
+    marginRight: 8,
+  },
+  iaChipActive: {
+    backgroundColor: "#2563eb",
+  },
+  iaChipText: {
+    color: "#0f172a",
+    fontWeight: "bold",
+  },
+  messages: {
+    flex: 1,
+  },
+  emptyBox: {
+    padding: 20,
+    backgroundColor: "white",
+    borderRadius: 18,
+    marginTop: 40,
+  },
+  emptyTitle: {
+    fontWeight: "bold",
+    fontSize: 18,
+    color: "#0f172a",
+  },
+  emptyText: {
+    color: "#64748b",
+    marginTop: 6,
+    lineHeight: 20,
+  },
+  bubble: {
+    padding: 13,
+    borderRadius: 16,
+    marginBottom: 10,
+    maxWidth: "88%",
+  },
+  userBubble: {
+    backgroundColor: "#2563eb",
+    alignSelf: "flex-end",
+  },
+  aiBubble: {
+    backgroundColor: "white",
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    alignSelf: "flex-start",
+  },
+  bubbleMeta: {
+    fontSize: 12,
+    color: "#2563eb",
+    fontWeight: "bold",
+    marginBottom: 5,
+  },
+  bubbleText: {
+    color: "#0f172a",
+    lineHeight: 20,
+  },
+  userBubbleText: {
+    color: "white",
+  },
+  timeText: {
+    color: "#64748b",
+    fontSize: 11,
+    marginTop: 8,
+  },
+  userTimeText: {
+    color: "#dbeafe",
+  },
+  sendBox: {
+    flexDirection: "row",
+    gap: 8,
+    alignItems: "flex-end",
+    paddingTop: 10,
+  },
+  messageInput: {
+    flex: 1,
+    minHeight: 46,
+    maxHeight: 110,
+    backgroundColor: "white",
+    borderColor: "#cbd5e1",
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 12,
+  },
+  sendButton: {
+    backgroundColor: "#2563eb",
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderRadius: 14,
+  },
+  sendText: {
+    color: "white",
+    fontWeight: "bold",
+  },
+  sectionTitle: {
+    color: "#0f172a",
+    fontWeight: "bold",
+    fontSize: 22,
+    marginBottom: 10,
+  },
+  refreshButton: {
+    backgroundColor: "#020617",
+    padding: 12,
+    borderRadius: 12,
+    marginBottom: 12,
+    alignItems: "center",
+  },
+  refreshText: {
+    color: "white",
+    fontWeight: "bold",
+  },
+  mutedText: {
+    color: "#64748b",
+    lineHeight: 20,
+  },
+  historyItem: {
+    backgroundColor: "white",
+    padding: 14,
+    borderRadius: 14,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+  },
+  historySource: {
+    color: "#2563eb",
+    fontWeight: "bold",
+    marginBottom: 4,
+  },
+  historyTitle: {
+    color: "#0f172a",
+  },
+  alexaCard: {
+    backgroundColor: "white",
+    padding: 16,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+  },
+  cardLabel: {
+    color: "#64748b",
+    fontWeight: "bold",
+    marginTop: 8,
+  },
+  statusText: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "#0f172a",
+    marginTop: 4,
+  },
+  codeText: {
+    fontSize: 32,
+    fontWeight: "bold",
+    color: "#2563eb",
+    letterSpacing: 4,
+    marginTop: 4,
+  },
+  noticeBox: {
+    backgroundColor: "#fef3c7",
+    padding: 14,
+    borderRadius: 14,
+    marginTop: 12,
+  },
+  noticeTitle: {
+    color: "#92400e",
+    fontWeight: "bold",
+    marginBottom: 6,
   },
 });
