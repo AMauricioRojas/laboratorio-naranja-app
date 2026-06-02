@@ -501,7 +501,7 @@ export default function App() {
     return (
       <SafeAreaView style={styles.center}>
         <ActivityIndicator size="large" />
-        <Text style={styles.loadingText}>Cargando Laboratorio Naranja...</Text>
+        <Text style={styles.loadingText}>Cargando Nexo IA...</Text>
       </SafeAreaView>
     );
   }
@@ -510,8 +510,8 @@ export default function App() {
     return (
       <SafeAreaView style={styles.login}>
         <View style={styles.loginCard}>
-          <Text style={styles.logo}>🍊</Text>
-          <Text style={styles.title}>Laboratorio Naranja</Text>
+          <Text style={styles.logo}>🧠</Text>
+          <Text style={styles.title}>Nexo IA</Text>
           <Text style={styles.subtitle}>
             Conecta Alexa con IA y consulta tu historial desde el móvil.
           </Text>
@@ -560,8 +560,8 @@ export default function App() {
     <SafeAreaView style={styles.app}>
       <View style={styles.topBar}>
         <View>
-          <Text style={styles.appTitle}>🍊 Laboratorio Naranja</Text>
-          <Text style={styles.appSubtitle}>Alexa + Multi IA + Historial</Text>
+          <Text style={styles.appTitle}>🧠 Nexo IA</Text>
+          <Text style={styles.appSubtitle}>Alexa + Nexo IA + Historial</Text>
         </View>
 
         <Pressable onPress={logout} style={styles.logoutButton}>
@@ -939,7 +939,7 @@ export default function App() {
 const styles = StyleSheet.create({
   center: {
     flex: 1,
-    backgroundColor: "#020617",
+    backgroundColor: "#0b1020",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -949,7 +949,7 @@ const styles = StyleSheet.create({
   },
   login: {
     flex: 1,
-    backgroundColor: "#020617",
+    backgroundColor: "#0b1020",
     justifyContent: "center",
     padding: 20,
   },
@@ -976,7 +976,7 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   input: {
-    backgroundColor: "#020617",
+    backgroundColor: "#0b1020",
     borderColor: "#334155",
     borderWidth: 1,
     color: "white",
@@ -985,7 +985,7 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   primaryButton: {
-    backgroundColor: "#2563eb",
+    backgroundColor: "#4f46e5",
     padding: 13,
     borderRadius: 12,
     marginTop: 12,
@@ -999,7 +999,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   dangerButton: {
-    backgroundColor: "#7f1d1d",
+    backgroundColor: "#991b1b",
     padding: 13,
     borderRadius: 12,
     marginTop: 10,
@@ -1014,7 +1014,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#f8fafc",
   },
   topBar: {
-    backgroundColor: "#020617",
+    backgroundColor: "#0b1020",
     paddingHorizontal: 16,
     paddingVertical: 14,
     flexDirection: "row",
@@ -1032,7 +1032,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   logoutButton: {
-    backgroundColor: "#7f1d1d",
+    backgroundColor: "#991b1b",
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 10,
@@ -1055,7 +1055,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#1f2937",
   },
   navActive: {
-    backgroundColor: "#2563eb",
+    backgroundColor: "#4f46e5",
   },
   navText: {
     color: "white",
@@ -1073,7 +1073,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   smallButton: {
-    backgroundColor: "#020617",
+    backgroundColor: "#0b1020",
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderRadius: 10,
@@ -1090,7 +1090,7 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   iaChipActive: {
-    backgroundColor: "#2563eb",
+    backgroundColor: "#4f46e5",
   },
   iaChipText: {
     color: "#0f172a",
@@ -1122,7 +1122,7 @@ const styles = StyleSheet.create({
     maxWidth: "88%",
   },
   userBubble: {
-    backgroundColor: "#2563eb",
+    backgroundColor: "#4f46e5",
     alignSelf: "flex-end",
   },
   aiBubble: {
@@ -1133,7 +1133,7 @@ const styles = StyleSheet.create({
   },
   bubbleMeta: {
     fontSize: 12,
-    color: "#2563eb",
+    color: "#4f46e5",
     fontWeight: "bold",
     marginBottom: 5,
   },
@@ -1169,7 +1169,7 @@ const styles = StyleSheet.create({
     padding: 12,
   },
   sendButton: {
-    backgroundColor: "#2563eb",
+    backgroundColor: "#4f46e5",
     paddingHorizontal: 16,
     paddingVertical: 14,
     borderRadius: 14,
@@ -1185,7 +1185,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   refreshButton: {
-    backgroundColor: "#020617",
+    backgroundColor: "#0b1020",
     padding: 12,
     borderRadius: 12,
     marginBottom: 12,
@@ -1208,7 +1208,7 @@ const styles = StyleSheet.create({
     borderColor: "#e2e8f0",
   },
   historySource: {
-    color: "#2563eb",
+    color: "#4f46e5",
     fontWeight: "bold",
     marginBottom: 4,
   },
@@ -1236,7 +1236,7 @@ const styles = StyleSheet.create({
   codeText: {
     fontSize: 32,
     fontWeight: "bold",
-    color: "#2563eb",
+    color: "#4f46e5",
     letterSpacing: 4,
     marginTop: 4,
   },
@@ -1267,7 +1267,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   scoreButtonActive: {
-    backgroundColor: "#2563eb",
+    backgroundColor: "#4f46e5",
   },
   scoreText: {
     color: "#0f172a",
@@ -1294,7 +1294,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
   },
   optionChipActive: {
-    backgroundColor: "#2563eb",
+    backgroundColor: "#4f46e5",
   },
   optionText: {
     color: "#0f172a",
