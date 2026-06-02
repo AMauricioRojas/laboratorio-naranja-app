@@ -513,7 +513,7 @@ export default function App() {
           <Text style={styles.logo}>🧠</Text>
           <Text style={styles.title}>Nexo IA</Text>
           <Text style={styles.subtitle}>
-            Conecta Alexa con IA y consulta tu historial desde el móvil.
+            Conecta Alexa con IA, guarda tu historial y consulta todo desde el móvil.
           </Text>
 
           <TextInput
@@ -560,8 +560,8 @@ export default function App() {
     <SafeAreaView style={styles.app}>
       <View style={styles.topBar}>
         <View>
-          <Text style={styles.appTitle}>🧠 Nexo IA</Text>
-          <Text style={styles.appSubtitle}>Alexa + Nexo IA + Historial</Text>
+          <Text style={styles.appTitle}>✦ Nexo IA</Text>
+          <Text style={styles.appSubtitle}>Voz + Web + App + IA</Text>
         </View>
 
         <Pressable onPress={logout} style={styles.logoutButton}>
@@ -625,10 +625,10 @@ export default function App() {
             {chatMessages.length === 0 ? (
               <View style={styles.emptyBox}>
                 <Text style={styles.emptyTitle}>
-                  Haz una pregunta desde el móvil
+                  Pregunta desde el móvil
                 </Text>
                 <Text style={styles.emptyText}>
-                  También puedes preguntarle a Alexa y luego ver el historial aquí.
+                  También puedes hablar con Alexa y revisar aquí todo el historial sincronizado.
                 </Text>
               </View>
             ) : (
@@ -723,7 +723,7 @@ export default function App() {
 
       {view === "alexa" && (
         <ScrollView style={styles.content}>
-          <Text style={styles.sectionTitle}>Conexión con Alexa</Text>
+          <Text style={styles.sectionTitle}>Alexa vinculada</Text>
 
           <View style={styles.alexaCard}>
             <Text style={styles.cardLabel}>Estado</Text>
@@ -731,6 +731,10 @@ export default function App() {
               {alexaStatus?.linked
                 ? "✅ Alexa vinculada"
                 : "❌ Alexa no vinculada"}
+            </Text>
+
+            <Text style={styles.mutedText}>
+              Para abrir la skill di: Alexa, abre nexo inteligente.
             </Text>
 
             {alexaStatus?.active_pair_code && (
@@ -784,11 +788,11 @@ export default function App() {
 
       {view === "survey" && (
         <ScrollView style={styles.content}>
-          <Text style={styles.sectionTitle}>Encuesta de experiencia</Text>
+          <Text style={styles.sectionTitle}>Encuesta Nexo IA</Text>
 
           <View style={styles.alexaCard}>
             <Text style={styles.statusText}>
-              📊 Evaluación de respuestas con IA
+              📊 Evaluación inteligente
             </Text>
 
             <Text style={styles.mutedText}>
@@ -939,127 +943,147 @@ export default function App() {
 const styles = StyleSheet.create({
   center: {
     flex: 1,
-    backgroundColor: "#0b1020",
+    backgroundColor: "#020617",
     alignItems: "center",
     justifyContent: "center",
   },
   loadingText: {
-    color: "white",
+    color: "#E0F2FE",
     marginTop: 12,
+    fontWeight: "700",
   },
   login: {
     flex: 1,
-    backgroundColor: "#0b1020",
+    backgroundColor: "#020617",
     justifyContent: "center",
     padding: 20,
   },
   loginCard: {
-    backgroundColor: "#111827",
-    borderRadius: 22,
-    padding: 22,
+    backgroundColor: "#0F172A",
+    borderRadius: 28,
+    padding: 24,
+    borderWidth: 1,
+    borderColor: "#1E293B",
+    shadowColor: "#000",
+    shadowOpacity: 0.35,
+    shadowRadius: 24,
+    elevation: 10,
   },
   logo: {
-    fontSize: 48,
+    fontSize: 52,
     textAlign: "center",
+    color: "#60A5FA",
   },
   title: {
     color: "white",
-    fontSize: 28,
-    fontWeight: "bold",
+    fontSize: 31,
+    fontWeight: "900",
     textAlign: "center",
+    letterSpacing: -0.8,
   },
   subtitle: {
-    color: "#94a3b8",
+    color: "#CBD5E1",
     textAlign: "center",
-    marginTop: 8,
-    marginBottom: 16,
-    lineHeight: 20,
+    marginTop: 9,
+    marginBottom: 18,
+    lineHeight: 21,
   },
   input: {
-    backgroundColor: "#0b1020",
+    backgroundColor: "#020617",
     borderColor: "#334155",
     borderWidth: 1,
     color: "white",
-    padding: 13,
-    borderRadius: 12,
+    padding: 14,
+    borderRadius: 16,
     marginTop: 10,
   },
   primaryButton: {
-    backgroundColor: "#4f46e5",
-    padding: 13,
-    borderRadius: 12,
+    backgroundColor: "#2563EB",
+    padding: 14,
+    borderRadius: 16,
     marginTop: 12,
     alignItems: "center",
+    shadowColor: "#2563EB",
+    shadowOpacity: 0.25,
+    shadowRadius: 14,
+    elevation: 4,
   },
   secondaryButton: {
     backgroundColor: "#334155",
-    padding: 13,
-    borderRadius: 12,
+    padding: 14,
+    borderRadius: 16,
     marginTop: 10,
     alignItems: "center",
   },
   dangerButton: {
-    backgroundColor: "#991b1b",
-    padding: 13,
-    borderRadius: 12,
+    backgroundColor: "#991B1B",
+    padding: 14,
+    borderRadius: 16,
     marginTop: 10,
     alignItems: "center",
   },
   buttonText: {
     color: "white",
-    fontWeight: "bold",
+    fontWeight: "900",
   },
   app: {
     flex: 1,
-    backgroundColor: "#f8fafc",
+    backgroundColor: "#F6F8FC",
   },
   topBar: {
-    backgroundColor: "#0b1020",
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+    backgroundColor: "#020617",
+    paddingHorizontal: 18,
+    paddingVertical: 16,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    borderBottomWidth: 1,
+    borderBottomColor: "#1E293B",
   },
   appTitle: {
     color: "white",
-    fontSize: 20,
-    fontWeight: "bold",
+    fontSize: 22,
+    fontWeight: "900",
+    letterSpacing: -0.5,
   },
   appSubtitle: {
-    color: "#94a3b8",
+    color: "#93C5FD",
     fontSize: 12,
-    marginTop: 2,
+    marginTop: 3,
+    fontWeight: "700",
   },
   logoutButton: {
-    backgroundColor: "#991b1b",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 10,
+    backgroundColor: "#7F1D1D",
+    paddingHorizontal: 13,
+    paddingVertical: 9,
+    borderRadius: 12,
   },
   logoutText: {
     color: "white",
-    fontWeight: "bold",
+    fontWeight: "900",
   },
   nav: {
     flexDirection: "row",
-    backgroundColor: "#111827",
+    backgroundColor: "#0F172A",
     padding: 8,
-    gap: 8,
+    gap: 7,
   },
   navBtn: {
     flex: 1,
     padding: 10,
-    borderRadius: 12,
+    borderRadius: 14,
     alignItems: "center",
-    backgroundColor: "#1f2937",
+    backgroundColor: "#1E293B",
+    borderWidth: 1,
+    borderColor: "#26364D",
   },
   navActive: {
-    backgroundColor: "#4f46e5",
+    backgroundColor: "#2563EB",
+    borderColor: "#60A5FA",
   },
   navText: {
     color: "white",
-    fontWeight: "bold",
+    fontWeight: "900",
     fontSize: 12,
   },
   content: {
@@ -1070,87 +1094,103 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 8,
     alignItems: "center",
-    marginBottom: 10,
+    marginBottom: 12,
   },
   smallButton: {
-    backgroundColor: "#0b1020",
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 10,
+    backgroundColor: "#020617",
+    paddingHorizontal: 13,
+    paddingVertical: 11,
+    borderRadius: 13,
   },
   smallButtonText: {
     color: "white",
-    fontWeight: "bold",
+    fontWeight: "900",
   },
   iaChip: {
-    backgroundColor: "#e2e8f0",
-    paddingHorizontal: 12,
-    paddingVertical: 9,
+    backgroundColor: "#E2E8F0",
+    paddingHorizontal: 13,
+    paddingVertical: 10,
     borderRadius: 999,
     marginRight: 8,
+    borderWidth: 1,
+    borderColor: "#CBD5E1",
   },
   iaChipActive: {
-    backgroundColor: "#4f46e5",
+    backgroundColor: "#2563EB",
+    borderColor: "#2563EB",
   },
   iaChipText: {
-    color: "#0f172a",
-    fontWeight: "bold",
+    color: "#0F172A",
+    fontWeight: "900",
   },
   messages: {
     flex: 1,
   },
   emptyBox: {
-    padding: 20,
+    padding: 22,
     backgroundColor: "white",
-    borderRadius: 18,
-    marginTop: 40,
+    borderRadius: 24,
+    marginTop: 38,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    shadowColor: "#0F172A",
+    shadowOpacity: 0.08,
+    shadowRadius: 18,
+    elevation: 3,
   },
   emptyTitle: {
-    fontWeight: "bold",
-    fontSize: 18,
-    color: "#0f172a",
+    fontWeight: "900",
+    fontSize: 20,
+    color: "#0F172A",
+    letterSpacing: -0.3,
   },
   emptyText: {
-    color: "#64748b",
-    marginTop: 6,
-    lineHeight: 20,
+    color: "#64748B",
+    marginTop: 7,
+    lineHeight: 21,
   },
   bubble: {
-    padding: 13,
-    borderRadius: 16,
-    marginBottom: 10,
-    maxWidth: "88%",
+    padding: 14,
+    borderRadius: 19,
+    marginBottom: 11,
+    maxWidth: "90%",
+    shadowColor: "#0F172A",
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    elevation: 2,
   },
   userBubble: {
-    backgroundColor: "#4f46e5",
+    backgroundColor: "#2563EB",
     alignSelf: "flex-end",
+    borderBottomRightRadius: 7,
   },
   aiBubble: {
     backgroundColor: "white",
     borderWidth: 1,
-    borderColor: "#e2e8f0",
+    borderColor: "#E2E8F0",
     alignSelf: "flex-start",
+    borderBottomLeftRadius: 7,
   },
   bubbleMeta: {
     fontSize: 12,
-    color: "#4f46e5",
-    fontWeight: "bold",
-    marginBottom: 5,
+    color: "#2563EB",
+    fontWeight: "900",
+    marginBottom: 6,
   },
   bubbleText: {
-    color: "#0f172a",
-    lineHeight: 20,
+    color: "#0F172A",
+    lineHeight: 21,
   },
   userBubbleText: {
     color: "white",
   },
   timeText: {
-    color: "#64748b",
+    color: "#64748B",
     fontSize: 11,
     marginTop: 8,
   },
   userTimeText: {
-    color: "#dbeafe",
+    color: "#DBEAFE",
   },
   sendBox: {
     flexDirection: "row",
@@ -1160,99 +1200,113 @@ const styles = StyleSheet.create({
   },
   messageInput: {
     flex: 1,
-    minHeight: 46,
-    maxHeight: 110,
+    minHeight: 48,
+    maxHeight: 112,
     backgroundColor: "white",
-    borderColor: "#cbd5e1",
+    borderColor: "#CBD5E1",
     borderWidth: 1,
-    borderRadius: 14,
-    padding: 12,
+    borderRadius: 16,
+    padding: 13,
+    color: "#0F172A",
   },
   sendButton: {
-    backgroundColor: "#4f46e5",
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderRadius: 14,
+    backgroundColor: "#2563EB",
+    paddingHorizontal: 17,
+    paddingVertical: 15,
+    borderRadius: 16,
   },
   sendText: {
     color: "white",
-    fontWeight: "bold",
+    fontWeight: "900",
   },
   sectionTitle: {
-    color: "#0f172a",
-    fontWeight: "bold",
-    fontSize: 22,
-    marginBottom: 10,
+    color: "#0F172A",
+    fontWeight: "900",
+    fontSize: 24,
+    marginBottom: 12,
+    letterSpacing: -0.5,
   },
   refreshButton: {
-    backgroundColor: "#0b1020",
-    padding: 12,
-    borderRadius: 12,
+    backgroundColor: "#020617",
+    padding: 13,
+    borderRadius: 15,
     marginBottom: 12,
     alignItems: "center",
   },
   refreshText: {
     color: "white",
-    fontWeight: "bold",
+    fontWeight: "900",
   },
   mutedText: {
-    color: "#64748b",
-    lineHeight: 20,
+    color: "#64748B",
+    lineHeight: 21,
   },
   historyItem: {
     backgroundColor: "white",
-    padding: 14,
-    borderRadius: 14,
-    marginBottom: 10,
+    padding: 15,
+    borderRadius: 18,
+    marginBottom: 11,
     borderWidth: 1,
-    borderColor: "#e2e8f0",
+    borderColor: "#E2E8F0",
+    shadowColor: "#0F172A",
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    elevation: 2,
   },
   historySource: {
-    color: "#4f46e5",
-    fontWeight: "bold",
-    marginBottom: 4,
+    color: "#2563EB",
+    fontWeight: "900",
+    marginBottom: 5,
   },
   historyTitle: {
-    color: "#0f172a",
+    color: "#0F172A",
+    lineHeight: 20,
   },
   alexaCard: {
     backgroundColor: "white",
-    padding: 16,
-    borderRadius: 18,
+    padding: 17,
+    borderRadius: 24,
     borderWidth: 1,
-    borderColor: "#e2e8f0",
+    borderColor: "#E2E8F0",
+    shadowColor: "#0F172A",
+    shadowOpacity: 0.08,
+    shadowRadius: 18,
+    elevation: 3,
   },
   cardLabel: {
-    color: "#64748b",
-    fontWeight: "bold",
-    marginTop: 8,
+    color: "#64748B",
+    fontWeight: "900",
+    marginTop: 10,
   },
   statusText: {
-    fontSize: 18,
-    fontWeight: "bold",
-    color: "#0f172a",
-    marginTop: 4,
+    fontSize: 19,
+    fontWeight: "900",
+    color: "#0F172A",
+    marginTop: 5,
+    letterSpacing: -0.2,
   },
   codeText: {
-    fontSize: 32,
-    fontWeight: "bold",
-    color: "#4f46e5",
+    fontSize: 34,
+    fontWeight: "900",
+    color: "#2563EB",
     letterSpacing: 4,
-    marginTop: 4,
+    marginTop: 5,
   },
   noticeBox: {
-    backgroundColor: "#fef3c7",
-    padding: 14,
-    borderRadius: 14,
+    backgroundColor: "#FEF3C7",
+    padding: 15,
+    borderRadius: 17,
     marginTop: 12,
+    borderWidth: 1,
+    borderColor: "#FDE68A",
   },
   noticeTitle: {
-    color: "#92400e",
-    fontWeight: "bold",
+    color: "#92400E",
+    fontWeight: "900",
     marginBottom: 6,
   },
   surveyBlock: {
-    marginTop: 14,
+    marginTop: 15,
   },
   scoreRow: {
     flexDirection: "row",
@@ -1261,17 +1315,17 @@ const styles = StyleSheet.create({
   },
   scoreButton: {
     flex: 1,
-    backgroundColor: "#e2e8f0",
-    paddingVertical: 11,
-    borderRadius: 12,
+    backgroundColor: "#E2E8F0",
+    paddingVertical: 12,
+    borderRadius: 14,
     alignItems: "center",
   },
   scoreButtonActive: {
-    backgroundColor: "#4f46e5",
+    backgroundColor: "#2563EB",
   },
   scoreText: {
-    color: "#0f172a",
-    fontWeight: "bold",
+    color: "#0F172A",
+    fontWeight: "900",
   },
   scoreTextActive: {
     color: "white",
@@ -1288,38 +1342,40 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   optionChip: {
-    backgroundColor: "#e2e8f0",
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    backgroundColor: "#E2E8F0",
+    paddingHorizontal: 13,
+    paddingVertical: 11,
     borderRadius: 999,
   },
   optionChipActive: {
-    backgroundColor: "#4f46e5",
+    backgroundColor: "#2563EB",
   },
   optionText: {
-    color: "#0f172a",
-    fontWeight: "bold",
+    color: "#0F172A",
+    fontWeight: "900",
   },
   optionTextActive: {
     color: "white",
   },
   textArea: {
-    minHeight: 90,
-    backgroundColor: "#f8fafc",
+    minHeight: 96,
+    backgroundColor: "#F8FAFC",
     borderWidth: 1,
-    borderColor: "#cbd5e1",
-    borderRadius: 14,
-    padding: 12,
+    borderColor: "#CBD5E1",
+    borderRadius: 16,
+    padding: 13,
     textAlignVertical: "top",
-    color: "#0f172a",
+    color: "#0F172A",
     marginTop: 8,
   },
   surveyHint: {
-    color: "#92400e",
-    backgroundColor: "#fef3c7",
-    padding: 10,
-    borderRadius: 12,
+    color: "#92400E",
+    backgroundColor: "#FEF3C7",
+    padding: 12,
+    borderRadius: 15,
     marginTop: 12,
     lineHeight: 20,
+    borderWidth: 1,
+    borderColor: "#FDE68A",
   },
 });
