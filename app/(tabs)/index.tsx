@@ -1,10 +1,12 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import React, { useEffect, useState } from "react";
+import { StatusBar } from "expo-status-bar";
+import { SafeAreaView } from "react-native-safe-area-context";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Image,
   Pressable,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
@@ -13,13 +15,19 @@ import {
 } from "react-native";
 
 const API = "https://multi-ia-alexa-backend.onrender.com";
+const LOGO = require("../../assets/images/nexo-logo.png");
 
 type ViewMode = "chat" | "history" | "alexa" | "survey";
+type AuthMode = "login" | "register" | "verify" | "forgot" | "reset";
 
 export default function App() {
   const [token, setToken] = useState<string | null>(null);
+  const [authMode, setAuthMode] = useState<AuthMode>("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [pendingEmail, setPendingEmail] = useState("");
+  const [code, setCode] = useState("");
+  const [newPassword, setNewPassword] = useState("");
 
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState(false);
@@ -40,6 +48,8 @@ export default function App() {
   const [surveyPreferred, setSurveyPreferred] = useState(true);
   const [surveyBestAi, setSurveyBestAi] = useState("auto");
   const [surveyComments, setSurveyComments] = useState("");
+
+  const showSurveyTab = surveyStatus?.reason !== "already_answered";
 
   useEffect(() => {
     bootstrap();
@@ -65,16 +75,33 @@ export default function App() {
       Authorization: authToken || "",
     };
 
-    if (json) {
-      headers["Content-Type"] = "application/json";
-    }
+    if (json) headers["Content-Type"] = "application/json";
 
     return headers;
   }
 
+  function isValidEmail(value: string) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || "").trim());
+  }
+
+  function isValidPassword(value: string) {
+    return String(value || "").length >= 8;
+  }
+
+  function wakeMessage() {
+    return "No se pudo conectar. Si el servidor estaba dormido, espera unos segundos e intenta de nuevo.";
+  }
+
   async function login() {
-    if (!email.trim() || !password.trim()) {
-      Alert.alert("Faltan datos", "Escribe usuario/email y contraseña.");
+    const cleanEmail = email.trim().toLowerCase();
+
+    if (!isValidEmail(cleanEmail)) {
+      Alert.alert("Correo inválido", "Ingresa un correo válido.");
+      return;
+    }
+
+    if (!password) {
+      Alert.alert("Faltan datos", "Escribe tu contraseña.");
       return;
     }
 
@@ -84,32 +111,46 @@ export default function App() {
       const res = await fetch(`${API}/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: email.trim(),
-          password: password.trim(),
-        }),
+        body: JSON.stringify({ email: cleanEmail, password }),
       });
 
       const data = await res.json();
 
-      if (!data.token) {
-        Alert.alert("Error", data.error || "No se pudo iniciar sesión.");
+      if (data.token) {
+        await AsyncStorage.setItem("token", data.token);
+        setToken(data.token);
+        await loadDashboard(data.token);
         return;
       }
 
-      await AsyncStorage.setItem("token", data.token);
-      setToken(data.token);
-      await loadDashboard(data.token);
+      if (data.needs_verification) {
+        const mail = data.email || cleanEmail;
+        setPendingEmail(mail);
+        setEmail(mail);
+        setCode("");
+        setAuthMode("verify");
+        Alert.alert("Verifica tu correo", data.error || "Te enviamos un nuevo código.");
+        return;
+      }
+
+      Alert.alert("Error", data.error || "No se pudo iniciar sesión.");
     } catch (error) {
-      Alert.alert("Error", "No se pudo conectar con el servidor.");
+      Alert.alert("Error", wakeMessage());
     } finally {
       setWorking(false);
     }
   }
 
   async function register() {
-    if (!email.trim() || !password.trim()) {
-      Alert.alert("Faltan datos", "Escribe usuario/email y contraseña.");
+    const cleanEmail = email.trim().toLowerCase();
+
+    if (!isValidEmail(cleanEmail)) {
+      Alert.alert("Correo inválido", "Ingresa un correo válido.");
+      return;
+    }
+
+    if (!isValidPassword(password)) {
+      Alert.alert("Contraseña débil", "La contraseña debe tener al menos 8 caracteres.");
       return;
     }
 
@@ -119,21 +160,160 @@ export default function App() {
       const res = await fetch(`${API}/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: cleanEmail, password }),
+      });
+
+      const data = await res.json();
+
+      if (data.ok || data.needs_verification) {
+        const mail = data.email || cleanEmail;
+        setPendingEmail(mail);
+        setEmail(mail);
+        setCode("");
+        setAuthMode("verify");
+        Alert.alert("Verificación", data.message || "Te enviamos un código.");
+        return;
+      }
+
+      Alert.alert("Error", data.error || "No se pudo crear cuenta.");
+    } catch (error) {
+      Alert.alert("Error", wakeMessage());
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  async function verifyEmail() {
+    const cleanEmail = (pendingEmail || email).trim().toLowerCase();
+
+    if (!isValidEmail(cleanEmail) || !code.trim()) {
+      Alert.alert("Faltan datos", "Escribe correo y código.");
+      return;
+    }
+
+    setWorking(true);
+
+    try {
+      const res = await fetch(`${API}/verify-email`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: cleanEmail, code: code.trim() }),
+      });
+
+      const data = await res.json();
+
+      if (data.ok) {
+        Alert.alert("Listo", "Correo verificado. Ahora inicia sesión.");
+        setAuthMode("login");
+        setPassword("");
+        setCode("");
+        return;
+      }
+
+      Alert.alert("Error", data.error || "No se pudo verificar.");
+    } catch (error) {
+      Alert.alert("Error", wakeMessage());
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  async function resendVerification() {
+    const cleanEmail = (pendingEmail || email).trim().toLowerCase();
+
+    if (!isValidEmail(cleanEmail)) {
+      Alert.alert("Correo inválido", "Ingresa un correo válido.");
+      return;
+    }
+
+    setWorking(true);
+
+    try {
+      const res = await fetch(`${API}/resend-verification`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: cleanEmail }),
+      });
+
+      const data = await res.json();
+      Alert.alert("Código", data.message || "Si aplica, te enviamos un código.");
+    } catch (error) {
+      Alert.alert("Error", wakeMessage());
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  async function forgotPassword() {
+    const cleanEmail = email.trim().toLowerCase();
+
+    if (!isValidEmail(cleanEmail)) {
+      Alert.alert("Correo inválido", "Ingresa un correo válido.");
+      return;
+    }
+
+    setWorking(true);
+
+    try {
+      const res = await fetch(`${API}/forgot-password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: cleanEmail }),
+      });
+
+      const data = await res.json();
+      setPendingEmail(cleanEmail);
+      setCode("");
+      setNewPassword("");
+      setAuthMode("reset");
+      Alert.alert("Recuperación", data.message || "Si el correo existe, enviaremos instrucciones.");
+    } catch (error) {
+      Alert.alert("Error", wakeMessage());
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  async function resetPassword() {
+    const cleanEmail = (pendingEmail || email).trim().toLowerCase();
+
+    if (!isValidEmail(cleanEmail) || !code.trim()) {
+      Alert.alert("Faltan datos", "Escribe correo y código.");
+      return;
+    }
+
+    if (!isValidPassword(newPassword)) {
+      Alert.alert("Contraseña débil", "La contraseña debe tener al menos 8 caracteres.");
+      return;
+    }
+
+    setWorking(true);
+
+    try {
+      const res = await fetch(`${API}/reset-password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          email: email.trim(),
-          password: password.trim(),
+          email: cleanEmail,
+          code: code.trim(),
+          password: newPassword,
         }),
       });
 
       const data = await res.json();
 
       if (data.ok) {
-        Alert.alert("Listo", "Usuario creado. Ahora inicia sesión.");
-      } else {
-        Alert.alert("Error", data.error || "No se pudo crear usuario.");
+        Alert.alert("Listo", "Contraseña actualizada. Inicia sesión.");
+        setAuthMode("login");
+        setPassword("");
+        setNewPassword("");
+        setCode("");
+        return;
       }
+
+      Alert.alert("Error", data.error || "No se pudo actualizar.");
     } catch (error) {
-      Alert.alert("Error", "No se pudo conectar con el servidor.");
+      Alert.alert("Error", wakeMessage());
     } finally {
       setWorking(false);
     }
@@ -147,6 +327,7 @@ export default function App() {
     setAlexaStatus(null);
     setConversationId(null);
     setView("chat");
+    setAuthMode("login");
   }
 
   async function loadDashboard(authToken = token) {
@@ -235,7 +416,7 @@ export default function App() {
         Alert.alert("Error", data.error || "No se pudo guardar la encuesta.");
       }
     } catch (error) {
-      Alert.alert("Error", "No se pudo conectar con el servidor.");
+      Alert.alert("Error", wakeMessage());
     } finally {
       setWorking(false);
     }
@@ -261,7 +442,7 @@ export default function App() {
         Alert.alert("Error", data.error || "No se pudo posponer.");
       }
     } catch (error) {
-      Alert.alert("Error", "No se pudo conectar con el servidor.");
+      Alert.alert("Error", wakeMessage());
     } finally {
       setWorking(false);
     }
@@ -282,14 +463,14 @@ export default function App() {
       if (data.ok) {
         Alert.alert(
           "Código Alexa",
-          `Tu código es ${data.code}. Dile a Alexa: mi código es ${data.code}`
+          `Tu código es ${data.code}. Di: mi código es ${data.code}`
         );
         await loadAlexaStatus();
       } else {
         Alert.alert("Error", data.error || "No se pudo generar código.");
       }
     } catch (error) {
-      Alert.alert("Error", "No se pudo conectar con el servidor.");
+      Alert.alert("Error", wakeMessage());
     } finally {
       setWorking(false);
     }
@@ -319,7 +500,7 @@ export default function App() {
               Alert.alert("Error", data.error || "No se pudo desvincular.");
             }
           } catch (error) {
-            Alert.alert("Error", "No se pudo conectar con el servidor.");
+            Alert.alert("Error", wakeMessage());
           } finally {
             setWorking(false);
           }
@@ -392,7 +573,7 @@ export default function App() {
         ...prev,
         {
           role: "ai",
-          mensaje: "No se pudo conectar con el servidor.",
+          mensaje: wakeMessage(),
           ia: "error",
           source: "mobile",
           created_at: new Date().toISOString(),
@@ -409,7 +590,7 @@ export default function App() {
     setWorking(true);
 
     try {
-      const res = await fetch(`${API}/historial/${id}`, {
+      const res = await fetch(`${API}/historial/${encodeURIComponent(id)}`, {
         headers: authHeaders(),
       });
 
@@ -423,6 +604,73 @@ export default function App() {
     } finally {
       setWorking(false);
     }
+  }
+
+  async function deleteConversation(id: string) {
+    Alert.alert("Borrar chat", "¿Seguro que quieres borrar este chat?", [
+      { text: "Cancelar", style: "cancel" },
+      {
+        text: "Borrar",
+        style: "destructive",
+        onPress: async () => {
+          setWorking(true);
+
+          try {
+            const res = await fetch(`${API}/conversaciones/${encodeURIComponent(id)}`, {
+              method: "DELETE",
+              headers: authHeaders(),
+            });
+
+            const data = await res.json();
+
+            if (data.ok) {
+              if (conversationId === id) newChat();
+              await loadConversations();
+            } else {
+              Alert.alert("Error", data.error || "No se pudo borrar.");
+            }
+          } catch {
+            Alert.alert("Error", wakeMessage());
+          } finally {
+            setWorking(false);
+          }
+        },
+      },
+    ]);
+  }
+
+  async function deleteAllConversations() {
+    Alert.alert("Borrar historial", "¿Seguro que quieres borrar todo tu historial visible?", [
+      { text: "Cancelar", style: "cancel" },
+      {
+        text: "Borrar todo",
+        style: "destructive",
+        onPress: async () => {
+          setWorking(true);
+
+          try {
+            const res = await fetch(`${API}/conversaciones`, {
+              method: "DELETE",
+              headers: authHeaders(),
+            });
+
+            const data = await res.json();
+
+            if (data.ok) {
+              newChat();
+              await loadConversations();
+              Alert.alert("Listo", "Historial borrado.");
+            } else {
+              Alert.alert("Error", data.error || "No se pudo borrar.");
+            }
+          } catch {
+            Alert.alert("Error", wakeMessage());
+          } finally {
+            setWorking(false);
+          }
+        },
+      },
+    ]);
   }
 
   function newChat() {
@@ -452,11 +700,8 @@ export default function App() {
 
   function formatDate(value: string) {
     if (!value) return "";
-
     const date = new Date(value);
-
     if (Number.isNaN(date.getTime())) return "";
-
     return date.toLocaleString("es-MX", {
       dateStyle: "short",
       timeStyle: "short",
@@ -497,71 +742,249 @@ export default function App() {
     );
   }
 
+  function renderAuth() {
+    return (
+      <SafeAreaView style={styles.login}>
+        <StatusBar style="light" backgroundColor="#020617" />
+        <ScrollView contentContainerStyle={styles.loginScroll}>
+          <View style={styles.heroCard}>
+            <Image source={LOGO} style={styles.authLogo} />
+            <Text style={styles.title}>Nexo IA</Text>
+            <Text style={styles.subtitle}>
+              Voz, web y app conectadas con inteligencia artificial.
+            </Text>
+          </View>
+
+          <View style={styles.loginCard}>
+            {authMode === "login" && (
+              <>
+                <Text style={styles.formTitle}>Iniciar sesión</Text>
+                <Text style={styles.formSubtitle}>
+                  Accede a tus conversaciones de Alexa, web y móvil.
+                </Text>
+
+                <TextInput
+                  style={styles.input}
+                  placeholder="Correo"
+                  placeholderTextColor="#94a3b8"
+                  value={email}
+                  onChangeText={setEmail}
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                />
+
+                <TextInput
+                  style={styles.input}
+                  placeholder="Contraseña"
+                  placeholderTextColor="#94a3b8"
+                  value={password}
+                  onChangeText={setPassword}
+                  secureTextEntry
+                />
+
+                <Pressable style={styles.primaryButton} onPress={login} disabled={working}>
+                  <Text style={styles.buttonText}>{working ? "Cargando..." : "Entrar"}</Text>
+                </Pressable>
+
+                <Pressable style={styles.secondaryButton} onPress={() => setAuthMode("register")}>
+                  <Text style={styles.buttonText}>Crear cuenta</Text>
+                </Pressable>
+
+                <View style={styles.authLinks}>
+                  <Pressable onPress={() => setAuthMode("forgot")}>
+                    <Text style={styles.linkText}>Olvidé mi contraseña</Text>
+                  </Pressable>
+
+                  <Pressable onPress={() => setAuthMode("verify")}>
+                    <Text style={styles.linkText}>Verificar correo</Text>
+                  </Pressable>
+                </View>
+              </>
+            )}
+
+            {authMode === "register" && (
+              <>
+                <Text style={styles.formTitle}>Crear cuenta</Text>
+                <Text style={styles.formSubtitle}>
+                  Usa un correo real. Te enviaremos un código de verificación.
+                </Text>
+
+                <TextInput
+                  style={styles.input}
+                  placeholder="Correo"
+                  placeholderTextColor="#94a3b8"
+                  value={email}
+                  onChangeText={setEmail}
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                />
+
+                <TextInput
+                  style={styles.input}
+                  placeholder="Contraseña de mínimo 8 caracteres"
+                  placeholderTextColor="#94a3b8"
+                  value={password}
+                  onChangeText={setPassword}
+                  secureTextEntry
+                />
+
+                <Pressable style={styles.primaryButton} onPress={register} disabled={working}>
+                  <Text style={styles.buttonText}>{working ? "Creando..." : "Crear cuenta"}</Text>
+                </Pressable>
+
+                <Pressable style={styles.secondaryButton} onPress={() => setAuthMode("login")}>
+                  <Text style={styles.buttonText}>Ya tengo cuenta</Text>
+                </Pressable>
+              </>
+            )}
+
+            {authMode === "verify" && (
+              <>
+                <Text style={styles.formTitle}>Verificar correo</Text>
+                <Text style={styles.formSubtitle}>
+                  Ingresa el código enviado. En pruebas, aparece en logs si MAIL_MODE=console.
+                </Text>
+
+                <TextInput
+                  style={styles.input}
+                  placeholder="Correo"
+                  placeholderTextColor="#94a3b8"
+                  value={pendingEmail || email}
+                  onChangeText={(value) => {
+                    setPendingEmail(value);
+                    setEmail(value);
+                  }}
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                />
+
+                <TextInput
+                  style={styles.input}
+                  placeholder="Código de 6 dígitos"
+                  placeholderTextColor="#94a3b8"
+                  value={code}
+                  onChangeText={setCode}
+                  keyboardType="number-pad"
+                />
+
+                <Pressable style={styles.primaryButton} onPress={verifyEmail} disabled={working}>
+                  <Text style={styles.buttonText}>Verificar</Text>
+                </Pressable>
+
+                <Pressable style={styles.secondaryButton} onPress={resendVerification} disabled={working}>
+                  <Text style={styles.buttonText}>Reenviar código</Text>
+                </Pressable>
+
+                <Pressable style={styles.ghostButton} onPress={() => setAuthMode("login")}>
+                  <Text style={styles.linkText}>Volver a login</Text>
+                </Pressable>
+              </>
+            )}
+
+            {authMode === "forgot" && (
+              <>
+                <Text style={styles.formTitle}>Recuperar contraseña</Text>
+                <Text style={styles.formSubtitle}>
+                  Te enviaremos un código si el correo está registrado.
+                </Text>
+
+                <TextInput
+                  style={styles.input}
+                  placeholder="Correo"
+                  placeholderTextColor="#94a3b8"
+                  value={email}
+                  onChangeText={setEmail}
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                />
+
+                <Pressable style={styles.primaryButton} onPress={forgotPassword} disabled={working}>
+                  <Text style={styles.buttonText}>Enviar código</Text>
+                </Pressable>
+
+                <Pressable style={styles.secondaryButton} onPress={() => setAuthMode("login")}>
+                  <Text style={styles.buttonText}>Volver</Text>
+                </Pressable>
+              </>
+            )}
+
+            {authMode === "reset" && (
+              <>
+                <Text style={styles.formTitle}>Nueva contraseña</Text>
+                <Text style={styles.formSubtitle}>
+                  Usa el código recibido para crear una contraseña nueva.
+                </Text>
+
+                <TextInput
+                  style={styles.input}
+                  placeholder="Correo"
+                  placeholderTextColor="#94a3b8"
+                  value={pendingEmail || email}
+                  onChangeText={(value) => {
+                    setPendingEmail(value);
+                    setEmail(value);
+                  }}
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                />
+
+                <TextInput
+                  style={styles.input}
+                  placeholder="Código"
+                  placeholderTextColor="#94a3b8"
+                  value={code}
+                  onChangeText={setCode}
+                  keyboardType="number-pad"
+                />
+
+                <TextInput
+                  style={styles.input}
+                  placeholder="Nueva contraseña"
+                  placeholderTextColor="#94a3b8"
+                  value={newPassword}
+                  onChangeText={setNewPassword}
+                  secureTextEntry
+                />
+
+                <Pressable style={styles.primaryButton} onPress={resetPassword} disabled={working}>
+                  <Text style={styles.buttonText}>Actualizar contraseña</Text>
+                </Pressable>
+
+                <Pressable style={styles.secondaryButton} onPress={() => setAuthMode("login")}>
+                  <Text style={styles.buttonText}>Volver a login</Text>
+                </Pressable>
+              </>
+            )}
+          </View>
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
+
   if (loading) {
     return (
       <SafeAreaView style={styles.center}>
-        <ActivityIndicator size="large" />
+        <StatusBar style="light" backgroundColor="#020617" />
+        <ActivityIndicator size="large" color="#38bdf8" />
         <Text style={styles.loadingText}>Cargando Nexo IA...</Text>
       </SafeAreaView>
     );
   }
 
   if (!token) {
-    return (
-      <SafeAreaView style={styles.login}>
-        <View style={styles.loginCard}>
-          <Text style={styles.logo}>🧠</Text>
-          <Text style={styles.title}>Nexo IA</Text>
-          <Text style={styles.subtitle}>
-            Conecta Alexa con IA, guarda tu historial y consulta todo desde el móvil.
-          </Text>
-
-          <TextInput
-            style={styles.input}
-            placeholder="Email o usuario"
-            placeholderTextColor="#94a3b8"
-            value={email}
-            onChangeText={setEmail}
-            autoCapitalize="none"
-          />
-
-          <TextInput
-            style={styles.input}
-            placeholder="Contraseña"
-            placeholderTextColor="#94a3b8"
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-          />
-
-          <Pressable
-            style={styles.primaryButton}
-            onPress={login}
-            disabled={working}
-          >
-            <Text style={styles.buttonText}>
-              {working ? "Cargando..." : "Entrar"}
-            </Text>
-          </Pressable>
-
-          <Pressable
-            style={styles.secondaryButton}
-            onPress={register}
-            disabled={working}
-          >
-            <Text style={styles.buttonText}>Crear cuenta</Text>
-          </Pressable>
-        </View>
-      </SafeAreaView>
-    );
+    return renderAuth();
   }
 
   return (
     <SafeAreaView style={styles.app}>
+      <StatusBar style="light" backgroundColor="#020617" />
       <View style={styles.topBar}>
-        <View>
-          <Text style={styles.appTitle}>✦ Nexo IA</Text>
-          <Text style={styles.appSubtitle}>Voz + Web + App + IA</Text>
+        <View style={styles.brandRow}>
+          <Image source={LOGO} style={styles.logoMini} />
+          <View>
+            <Text style={styles.appTitle}>Nexo IA</Text>
+            <Text style={styles.appSubtitle}>Alexa + Web + App + IA</Text>
+          </View>
         </View>
 
         <Pressable onPress={logout} style={styles.logoutButton}>
@@ -569,35 +992,25 @@ export default function App() {
         </Pressable>
       </View>
 
-      <View style={styles.nav}>
-        <Pressable
-          style={[styles.navBtn, view === "chat" && styles.navActive]}
-          onPress={() => setView("chat")}
-        >
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.nav}>
+        <Pressable style={[styles.navBtn, view === "chat" && styles.navActive]} onPress={() => setView("chat")}>
           <Text style={styles.navText}>Chat</Text>
         </Pressable>
 
-        <Pressable
-          style={[styles.navBtn, view === "history" && styles.navActive]}
-          onPress={() => setView("history")}
-        >
+        <Pressable style={[styles.navBtn, view === "history" && styles.navActive]} onPress={() => setView("history")}>
           <Text style={styles.navText}>Historial</Text>
         </Pressable>
 
-        <Pressable
-          style={[styles.navBtn, view === "alexa" && styles.navActive]}
-          onPress={() => setView("alexa")}
-        >
+        <Pressable style={[styles.navBtn, view === "alexa" && styles.navActive]} onPress={() => setView("alexa")}>
           <Text style={styles.navText}>Alexa</Text>
         </Pressable>
 
-        <Pressable
-          style={[styles.navBtn, view === "survey" && styles.navActive]}
-          onPress={() => setView("survey")}
-        >
-          <Text style={styles.navText}>Encuesta</Text>
-        </Pressable>
-      </View>
+        {showSurveyTab && (
+          <Pressable style={[styles.navBtn, view === "survey" && styles.navActive]} onPress={() => setView("survey")}>
+            <Text style={styles.navText}>Encuesta</Text>
+          </Pressable>
+        )}
+      </ScrollView>
 
       {view === "chat" && (
         <View style={styles.content}>
@@ -607,38 +1020,32 @@ export default function App() {
             </Pressable>
 
             <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              {["auto", "chatgpt", "groq_fast", "groq_power", "gemini"].map(
-                (item) => (
-                  <Pressable
-                    key={item}
-                    style={[styles.iaChip, ia === item && styles.iaChipActive]}
-                    onPress={() => setIa(item)}
-                  >
-                    <Text style={styles.iaChipText}>{getIaLabel(item)}</Text>
-                  </Pressable>
-                )
-              )}
+              {["auto", "chatgpt", "groq_fast", "groq_power", "gemini"].map((item) => (
+                <Pressable
+                  key={item}
+                  style={[styles.iaChip, ia === item && styles.iaChipActive]}
+                  onPress={() => setIa(item)}
+                >
+                  <Text style={[styles.iaChipText, ia === item && styles.iaChipTextActive]}>{getIaLabel(item)}</Text>
+                </Pressable>
+              ))}
             </ScrollView>
           </View>
 
           <ScrollView style={styles.messages}>
             {chatMessages.length === 0 ? (
               <View style={styles.emptyBox}>
-                <Text style={styles.emptyTitle}>
-                  Pregunta desde el móvil
-                </Text>
+                <Image source={LOGO} style={styles.emptyLogo} />
+                <Text style={styles.emptyTitle}>Pregunta desde Nexo IA</Text>
                 <Text style={styles.emptyText}>
-                  También puedes hablar con Alexa y revisar aquí todo el historial sincronizado.
+                  También puedes usar Alexa diciendo: “Alexa, abre nexo inteligente”.
                 </Text>
               </View>
             ) : (
               chatMessages.map((item, index) => (
                 <View
                   key={`${item.created_at}-${index}`}
-                  style={[
-                    styles.bubble,
-                    item.role === "user" ? styles.userBubble : styles.aiBubble,
-                  ]}
+                  style={[styles.bubble, item.role === "user" ? styles.userBubble : styles.aiBubble]}
                 >
                   {item.role !== "user" && (
                     <Text style={styles.bubbleMeta}>
@@ -646,21 +1053,11 @@ export default function App() {
                     </Text>
                   )}
 
-                  <Text
-                    style={[
-                      styles.bubbleText,
-                      item.role === "user" && styles.userBubbleText,
-                    ]}
-                  >
+                  <Text style={[styles.bubbleText, item.role === "user" && styles.userBubbleText]}>
                     {item.mensaje}
                   </Text>
 
-                  <Text
-                    style={[
-                      styles.timeText,
-                      item.role === "user" && styles.userTimeText,
-                    ]}
-                  >
+                  <Text style={[styles.timeText, item.role === "user" && styles.userTimeText]}>
                     {formatDate(item.created_at)}
                   </Text>
                 </View>
@@ -678,11 +1075,7 @@ export default function App() {
               multiline
             />
 
-            <Pressable
-              style={styles.sendButton}
-              onPress={sendMessage}
-              disabled={working}
-            >
+            <Pressable style={styles.sendButton} onPress={sendMessage} disabled={working}>
               <Text style={styles.sendText}>{working ? "..." : "Enviar"}</Text>
             </Pressable>
           </View>
@@ -693,29 +1086,30 @@ export default function App() {
         <ScrollView style={styles.content}>
           <Text style={styles.sectionTitle}>Historial</Text>
 
-          <Pressable
-            style={styles.refreshButton}
-            onPress={() => loadConversations()}
-          >
-            <Text style={styles.refreshText}>Refrescar historial</Text>
-          </Pressable>
+          <View style={styles.rowActions}>
+            <Pressable style={styles.refreshButton} onPress={() => loadConversations()}>
+              <Text style={styles.refreshText}>Refrescar</Text>
+            </Pressable>
+
+            <Pressable style={styles.deleteButton} onPress={deleteAllConversations}>
+              <Text style={styles.refreshText}>Borrar todo</Text>
+            </Pressable>
+          </View>
 
           {conversations.length === 0 ? (
             <Text style={styles.mutedText}>No hay conversaciones todavía.</Text>
           ) : (
             conversations.map((item) => (
-              <Pressable
-                key={item.conversation_id}
-                style={styles.historyItem}
-                onPress={() => openConversation(item.conversation_id)}
-              >
-                <Text style={styles.historySource}>
-                  {getSourceLabel(item.source)}
-                </Text>
-                <Text style={styles.historyTitle}>
-                  {item.titulo || "Chat sin título"}
-                </Text>
-              </Pressable>
+              <View key={item.conversation_id} style={styles.historyItem}>
+                <Pressable onPress={() => openConversation(item.conversation_id)} style={{ flex: 1 }}>
+                  <Text style={styles.historySource}>{getSourceLabel(item.source)}</Text>
+                  <Text style={styles.historyTitle}>{item.titulo || "Chat sin título"}</Text>
+                </Pressable>
+
+                <Pressable style={styles.historyDelete} onPress={() => deleteConversation(item.conversation_id)}>
+                  <Text style={styles.historyDeleteText}>Borrar</Text>
+                </Pressable>
+              </View>
             ))
           )}
         </ScrollView>
@@ -723,150 +1117,82 @@ export default function App() {
 
       {view === "alexa" && (
         <ScrollView style={styles.content}>
-          <Text style={styles.sectionTitle}>Alexa vinculada</Text>
+          <Text style={styles.sectionTitle}>Conexión con Alexa</Text>
 
-          <View style={styles.alexaCard}>
+          <View style={styles.card}>
             <Text style={styles.cardLabel}>Estado</Text>
             <Text style={styles.statusText}>
-              {alexaStatus?.linked
-                ? "✅ Alexa vinculada"
-                : "❌ Alexa no vinculada"}
-            </Text>
-
-            <Text style={styles.mutedText}>
-              Para abrir la skill di: Alexa, abre nexo inteligente.
+              {alexaStatus?.linked ? "✅ Alexa vinculada" : "❌ Alexa no vinculada"}
             </Text>
 
             {alexaStatus?.active_pair_code && (
               <>
                 <Text style={styles.cardLabel}>Código temporal</Text>
-                <Text style={styles.codeText}>
-                  {alexaStatus.active_pair_code.code}
-                </Text>
+                <Text style={styles.codeText}>{alexaStatus.active_pair_code.code}</Text>
                 <Text style={styles.mutedText}>
-                  Dile a Alexa: mi código es{" "}
-                  {alexaStatus.active_pair_code.code}
+                  Di: mi código es {alexaStatus.active_pair_code.code}
                 </Text>
               </>
             )}
 
-            <Pressable
-              style={styles.primaryButton}
-              onPress={generateAlexaCode}
-              disabled={working}
-            >
+            <Text style={styles.helpBox}>
+              Para abrir la skill di: “Alexa, abre nexo inteligente”.
+            </Text>
+
+            <Pressable style={styles.primaryButton} onPress={generateAlexaCode} disabled={working}>
               <Text style={styles.buttonText}>Generar código Alexa</Text>
             </Pressable>
 
-            <Pressable
-              style={styles.secondaryButton}
-              onPress={() => loadAlexaStatus()}
-              disabled={working}
-            >
+            <Pressable style={styles.secondaryButton} onPress={() => loadAlexaStatus()} disabled={working}>
               <Text style={styles.buttonText}>Refrescar estado</Text>
             </Pressable>
 
-            <Pressable
-              style={styles.dangerButton}
-              onPress={unlinkAlexa}
-              disabled={working}
-            >
+            <Pressable style={styles.dangerButton} onPress={unlinkAlexa} disabled={working}>
               <Text style={styles.buttonText}>Desvincular Alexa</Text>
             </Pressable>
           </View>
-
-          {surveyStatus?.should_show && (
-            <View style={styles.noticeBox}>
-              <Text style={styles.noticeTitle}>📊 Encuesta disponible</Text>
-              <Text style={styles.mutedText}>
-                Ya puedes responder la encuesta desde la pestaña Encuesta.
-              </Text>
-            </View>
-          )}
         </ScrollView>
       )}
 
-      {view === "survey" && (
+      {view === "survey" && showSurveyTab && (
         <ScrollView style={styles.content}>
-          <Text style={styles.sectionTitle}>Encuesta Nexo IA</Text>
+          <Text style={styles.sectionTitle}>Encuesta de experiencia</Text>
 
-          <View style={styles.alexaCard}>
-            <Text style={styles.statusText}>
-              📊 Evaluación inteligente
-            </Text>
+          <View style={styles.card}>
+            <Text style={styles.statusText}>📊 Evaluación de Nexo IA</Text>
 
             <Text style={styles.mutedText}>
-              Esta encuesta ayuda a medir si Alexa mejora al conectarse con
-              modelos de inteligencia artificial.
+              Esta encuesta ayuda a medir si Alexa mejora al conectarse con modelos de IA.
             </Text>
 
             {surveyStatus?.should_show ? (
-              <Text style={styles.surveyHint}>
-                La encuesta ya está disponible por uso suficiente.
-              </Text>
+              <Text style={styles.surveyHint}>La encuesta ya está disponible por uso suficiente.</Text>
             ) : (
               <Text style={styles.surveyHint}>
-                Puedes responderla en modo prueba. La regla real es después de 3
-                días o 8 preguntas por Alexa.
+                Puedes responderla en modo prueba. La regla real es después de 3 días o 8 preguntas por Alexa.
               </Text>
             )}
 
-            {renderScoreSelector(
-              "Claridad de las respuestas",
-              surveyClarity,
-              setSurveyClarity
-            )}
-
-            {renderScoreSelector(
-              "Qué tan completas fueron",
-              surveyCompleteness,
-              setSurveyCompleteness
-            )}
-
-            {renderScoreSelector(
-              "Utilidad general",
-              surveyUsefulness,
-              setSurveyUsefulness
-            )}
+            {renderScoreSelector("Claridad de las respuestas", surveyClarity, setSurveyClarity)}
+            {renderScoreSelector("Qué tan completas fueron", surveyCompleteness, setSurveyCompleteness)}
+            {renderScoreSelector("Utilidad general", surveyUsefulness, setSurveyUsefulness)}
 
             <View style={styles.surveyBlock}>
-              <Text style={styles.cardLabel}>
-                ¿Preferirías usar Alexa con este sistema?
-              </Text>
+              <Text style={styles.cardLabel}>¿Preferirías usar Alexa con Nexo IA?</Text>
 
               <View style={styles.optionRow}>
                 <Pressable
-                  style={[
-                    styles.optionChip,
-                    surveyPreferred && styles.optionChipActive,
-                  ]}
+                  style={[styles.optionChip, surveyPreferred && styles.optionChipActive]}
                   onPress={() => setSurveyPreferred(true)}
                 >
-                  <Text
-                    style={[
-                      styles.optionText,
-                      surveyPreferred && styles.optionTextActive,
-                    ]}
-                  >
-                    Sí
-                  </Text>
+                  <Text style={[styles.optionText, surveyPreferred && styles.optionTextActive]}>Sí</Text>
                 </Pressable>
 
                 <Pressable
-                  style={[
-                    styles.optionChip,
-                    !surveyPreferred && styles.optionChipActive,
-                  ]}
+                  style={[styles.optionChip, !surveyPreferred && styles.optionChipActive]}
                   onPress={() => setSurveyPreferred(false)}
                 >
-                  <Text
-                    style={[
-                      styles.optionText,
-                      !surveyPreferred && styles.optionTextActive,
-                    ]}
-                  >
-                    No
-                  </Text>
+                  <Text style={[styles.optionText, !surveyPreferred && styles.optionTextActive]}>No</Text>
                 </Pressable>
               </View>
             </View>
@@ -884,18 +1210,10 @@ export default function App() {
                 ].map(([value, label]) => (
                   <Pressable
                     key={value}
-                    style={[
-                      styles.optionChip,
-                      surveyBestAi === value && styles.optionChipActive,
-                    ]}
+                    style={[styles.optionChip, surveyBestAi === value && styles.optionChipActive]}
                     onPress={() => setSurveyBestAi(value)}
                   >
-                    <Text
-                      style={[
-                        styles.optionText,
-                        surveyBestAi === value && styles.optionTextActive,
-                      ]}
-                    >
+                    <Text style={[styles.optionText, surveyBestAi === value && styles.optionTextActive]}>
                       {label}
                     </Text>
                   </Pressable>
@@ -916,21 +1234,11 @@ export default function App() {
               />
             </View>
 
-            <Pressable
-              style={styles.primaryButton}
-              onPress={submitSurvey}
-              disabled={working}
-            >
-              <Text style={styles.buttonText}>
-                {working ? "Guardando..." : "Enviar encuesta"}
-              </Text>
+            <Pressable style={styles.primaryButton} onPress={submitSurvey} disabled={working}>
+              <Text style={styles.buttonText}>{working ? "Guardando..." : "Enviar encuesta"}</Text>
             </Pressable>
 
-            <Pressable
-              style={styles.secondaryButton}
-              onPress={dismissSurvey}
-              disabled={working}
-            >
+            <Pressable style={styles.secondaryButton} onPress={dismissSurvey} disabled={working}>
               <Text style={styles.buttonText}>Posponer 7 días</Text>
             </Pressable>
           </View>
@@ -948,114 +1256,146 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   loadingText: {
-    color: "#E0F2FE",
+    color: "white",
     marginTop: 12,
-    fontWeight: "700",
   },
   login: {
     flex: 1,
     backgroundColor: "#020617",
-    justifyContent: "center",
+  },
+  loginScroll: {
+    padding: 18,
+    paddingTop: 32,
+  },
+  heroCard: {
+    backgroundColor: "#0f172a",
+    borderRadius: 28,
     padding: 20,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: "rgba(56,189,248,0.25)",
+    alignItems: "center",
+  },
+  authLogo: {
+    width: 92,
+    height: 92,
+    borderRadius: 26,
+    backgroundColor: "white",
+    marginBottom: 10,
   },
   loginCard: {
-    backgroundColor: "#0F172A",
-    borderRadius: 28,
-    padding: 24,
+    backgroundColor: "#111827",
+    borderRadius: 26,
+    padding: 20,
     borderWidth: 1,
-    borderColor: "#1E293B",
-    shadowColor: "#000",
-    shadowOpacity: 0.35,
-    shadowRadius: 24,
-    elevation: 10,
-  },
-  logo: {
-    fontSize: 52,
-    textAlign: "center",
-    color: "#60A5FA",
+    borderColor: "rgba(148,163,184,0.22)",
   },
   title: {
     color: "white",
-    fontSize: 31,
+    fontSize: 34,
     fontWeight: "900",
     textAlign: "center",
-    letterSpacing: -0.8,
   },
   subtitle: {
-    color: "#CBD5E1",
+    color: "#94a3b8",
     textAlign: "center",
-    marginTop: 9,
-    marginBottom: 18,
-    lineHeight: 21,
+    marginTop: 8,
+    lineHeight: 20,
+  },
+  formTitle: {
+    color: "white",
+    fontSize: 24,
+    fontWeight: "900",
+  },
+  formSubtitle: {
+    color: "#94a3b8",
+    marginTop: 6,
+    marginBottom: 12,
+    lineHeight: 20,
   },
   input: {
     backgroundColor: "#020617",
     borderColor: "#334155",
     borderWidth: 1,
     color: "white",
-    padding: 14,
-    borderRadius: 16,
+    padding: 13,
+    borderRadius: 14,
     marginTop: 10,
   },
   primaryButton: {
-    backgroundColor: "#2563EB",
-    padding: 14,
-    borderRadius: 16,
+    backgroundColor: "#2563eb",
+    padding: 13,
+    borderRadius: 14,
     marginTop: 12,
     alignItems: "center",
-    shadowColor: "#2563EB",
-    shadowOpacity: 0.25,
-    shadowRadius: 14,
-    elevation: 4,
   },
   secondaryButton: {
     backgroundColor: "#334155",
-    padding: 14,
-    borderRadius: 16,
+    padding: 13,
+    borderRadius: 14,
     marginTop: 10,
     alignItems: "center",
   },
   dangerButton: {
-    backgroundColor: "#991B1B",
-    padding: 14,
-    borderRadius: 16,
+    backgroundColor: "#7f1d1d",
+    padding: 13,
+    borderRadius: 14,
     marginTop: 10,
+    alignItems: "center",
+  },
+  ghostButton: {
+    marginTop: 12,
     alignItems: "center",
   },
   buttonText: {
     color: "white",
     fontWeight: "900",
   },
+  linkText: {
+    color: "#7dd3fc",
+    fontWeight: "900",
+  },
+  authLinks: {
+    marginTop: 14,
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
   app: {
     flex: 1,
-    backgroundColor: "#F6F8FC",
+    backgroundColor: "#f8fafc",
   },
   topBar: {
     backgroundColor: "#020617",
-    paddingHorizontal: 18,
-    paddingVertical: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    borderBottomWidth: 1,
-    borderBottomColor: "#1E293B",
+  },
+  brandRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  logoMini: {
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    backgroundColor: "white",
   },
   appTitle: {
     color: "white",
     fontSize: 22,
     fontWeight: "900",
-    letterSpacing: -0.5,
   },
   appSubtitle: {
-    color: "#93C5FD",
+    color: "#94a3b8",
     fontSize: 12,
-    marginTop: 3,
-    fontWeight: "700",
   },
   logoutButton: {
-    backgroundColor: "#7F1D1D",
-    paddingHorizontal: 13,
-    paddingVertical: 9,
+    backgroundColor: "#7f1d1d",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     borderRadius: 12,
   },
   logoutText: {
@@ -1063,23 +1403,21 @@ const styles = StyleSheet.create({
     fontWeight: "900",
   },
   nav: {
-    flexDirection: "row",
-    backgroundColor: "#0F172A",
-    padding: 8,
-    gap: 7,
+    backgroundColor: "#111827",
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+    maxHeight: 58,
   },
   navBtn: {
-    flex: 1,
+    minWidth: 96,
     padding: 10,
     borderRadius: 14,
     alignItems: "center",
-    backgroundColor: "#1E293B",
-    borderWidth: 1,
-    borderColor: "#26364D",
+    backgroundColor: "#1f2937",
+    marginRight: 8,
   },
   navActive: {
-    backgroundColor: "#2563EB",
-    borderColor: "#60A5FA",
+    backgroundColor: "#2563eb",
   },
   navText: {
     color: "white",
@@ -1094,103 +1432,100 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 8,
     alignItems: "center",
-    marginBottom: 12,
+    marginBottom: 10,
   },
   smallButton: {
     backgroundColor: "#020617",
-    paddingHorizontal: 13,
-    paddingVertical: 11,
-    borderRadius: 13,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 12,
   },
   smallButtonText: {
     color: "white",
     fontWeight: "900",
   },
   iaChip: {
-    backgroundColor: "#E2E8F0",
-    paddingHorizontal: 13,
-    paddingVertical: 10,
+    backgroundColor: "#e2e8f0",
+    paddingHorizontal: 12,
+    paddingVertical: 9,
     borderRadius: 999,
     marginRight: 8,
-    borderWidth: 1,
-    borderColor: "#CBD5E1",
   },
   iaChipActive: {
-    backgroundColor: "#2563EB",
-    borderColor: "#2563EB",
+    backgroundColor: "#2563eb",
   },
   iaChipText: {
-    color: "#0F172A",
+    color: "#0f172a",
     fontWeight: "900",
+  },
+  iaChipTextActive: {
+    color: "white",
   },
   messages: {
     flex: 1,
   },
   emptyBox: {
-    padding: 22,
+    padding: 20,
     backgroundColor: "white",
-    borderRadius: 24,
-    marginTop: 38,
+    borderRadius: 20,
+    marginTop: 40,
+    alignItems: "center",
     borderWidth: 1,
-    borderColor: "#E2E8F0",
-    shadowColor: "#0F172A",
-    shadowOpacity: 0.08,
-    shadowRadius: 18,
-    elevation: 3,
+    borderColor: "#e2e8f0",
+  },
+  emptyLogo: {
+    width: 76,
+    height: 76,
+    borderRadius: 20,
+    marginBottom: 10,
   },
   emptyTitle: {
     fontWeight: "900",
-    fontSize: 20,
-    color: "#0F172A",
-    letterSpacing: -0.3,
+    fontSize: 19,
+    color: "#0f172a",
   },
   emptyText: {
-    color: "#64748B",
-    marginTop: 7,
-    lineHeight: 21,
+    color: "#64748b",
+    marginTop: 6,
+    lineHeight: 20,
+    textAlign: "center",
   },
   bubble: {
-    padding: 14,
-    borderRadius: 19,
-    marginBottom: 11,
-    maxWidth: "90%",
-    shadowColor: "#0F172A",
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
-    elevation: 2,
+    padding: 13,
+    borderRadius: 18,
+    marginBottom: 10,
+    maxWidth: "88%",
   },
   userBubble: {
-    backgroundColor: "#2563EB",
+    backgroundColor: "#2563eb",
     alignSelf: "flex-end",
-    borderBottomRightRadius: 7,
   },
   aiBubble: {
     backgroundColor: "white",
     borderWidth: 1,
-    borderColor: "#E2E8F0",
+    borderColor: "#e2e8f0",
     alignSelf: "flex-start",
-    borderBottomLeftRadius: 7,
   },
   bubbleMeta: {
     fontSize: 12,
-    color: "#2563EB",
+    color: "#2563eb",
     fontWeight: "900",
-    marginBottom: 6,
+    marginBottom: 5,
   },
   bubbleText: {
-    color: "#0F172A",
-    lineHeight: 21,
+    color: "#0f172a",
+    lineHeight: 20,
   },
   userBubbleText: {
     color: "white",
   },
   timeText: {
-    color: "#64748B",
+    color: "#64748b",
     fontSize: 11,
     marginTop: 8,
   },
   userTimeText: {
-    color: "#DBEAFE",
+    color: "#dbeafe",
   },
   sendBox: {
     flexDirection: "row",
@@ -1200,19 +1535,18 @@ const styles = StyleSheet.create({
   },
   messageInput: {
     flex: 1,
-    minHeight: 48,
-    maxHeight: 112,
+    minHeight: 46,
+    maxHeight: 110,
     backgroundColor: "white",
-    borderColor: "#CBD5E1",
+    borderColor: "#cbd5e1",
     borderWidth: 1,
     borderRadius: 16,
-    padding: 13,
-    color: "#0F172A",
+    padding: 12,
   },
   sendButton: {
-    backgroundColor: "#2563EB",
-    paddingHorizontal: 17,
-    paddingVertical: 15,
+    backgroundColor: "#2563eb",
+    paddingHorizontal: 16,
+    paddingVertical: 14,
     borderRadius: 16,
   },
   sendText: {
@@ -1220,17 +1554,28 @@ const styles = StyleSheet.create({
     fontWeight: "900",
   },
   sectionTitle: {
-    color: "#0F172A",
+    color: "#0f172a",
     fontWeight: "900",
     fontSize: 24,
+    marginBottom: 10,
+  },
+  rowActions: {
+    flexDirection: "row",
+    gap: 8,
     marginBottom: 12,
-    letterSpacing: -0.5,
   },
   refreshButton: {
+    flex: 1,
     backgroundColor: "#020617",
-    padding: 13,
-    borderRadius: 15,
-    marginBottom: 12,
+    padding: 12,
+    borderRadius: 14,
+    alignItems: "center",
+  },
+  deleteButton: {
+    flex: 1,
+    backgroundColor: "#7f1d1d",
+    padding: 12,
+    borderRadius: 14,
     alignItems: "center",
   },
   refreshText: {
@@ -1238,75 +1583,73 @@ const styles = StyleSheet.create({
     fontWeight: "900",
   },
   mutedText: {
-    color: "#64748B",
-    lineHeight: 21,
+    color: "#64748b",
+    lineHeight: 20,
   },
   historyItem: {
     backgroundColor: "white",
-    padding: 15,
-    borderRadius: 18,
-    marginBottom: 11,
+    padding: 14,
+    borderRadius: 16,
+    marginBottom: 10,
     borderWidth: 1,
-    borderColor: "#E2E8F0",
-    shadowColor: "#0F172A",
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
-    elevation: 2,
+    borderColor: "#e2e8f0",
+    flexDirection: "row",
+    gap: 10,
+    alignItems: "center",
   },
   historySource: {
-    color: "#2563EB",
+    color: "#2563eb",
     fontWeight: "900",
-    marginBottom: 5,
+    marginBottom: 4,
   },
   historyTitle: {
-    color: "#0F172A",
-    lineHeight: 20,
+    color: "#0f172a",
   },
-  alexaCard: {
+  historyDelete: {
+    backgroundColor: "#fee2e2",
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 12,
+  },
+  historyDeleteText: {
+    color: "#991b1b",
+    fontWeight: "900",
+  },
+  card: {
     backgroundColor: "white",
-    padding: 17,
-    borderRadius: 24,
+    padding: 16,
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: "#E2E8F0",
-    shadowColor: "#0F172A",
-    shadowOpacity: 0.08,
-    shadowRadius: 18,
-    elevation: 3,
+    borderColor: "#e2e8f0",
   },
   cardLabel: {
-    color: "#64748B",
+    color: "#64748b",
     fontWeight: "900",
-    marginTop: 10,
+    marginTop: 8,
   },
   statusText: {
-    fontSize: 19,
+    fontSize: 18,
     fontWeight: "900",
-    color: "#0F172A",
-    marginTop: 5,
-    letterSpacing: -0.2,
+    color: "#0f172a",
+    marginTop: 4,
   },
   codeText: {
     fontSize: 34,
     fontWeight: "900",
-    color: "#2563EB",
+    color: "#2563eb",
     letterSpacing: 4,
-    marginTop: 5,
+    marginTop: 4,
   },
-  noticeBox: {
-    backgroundColor: "#FEF3C7",
-    padding: 15,
-    borderRadius: 17,
+  helpBox: {
+    color: "#075985",
+    backgroundColor: "#e0f2fe",
+    padding: 12,
+    borderRadius: 14,
     marginTop: 12,
-    borderWidth: 1,
-    borderColor: "#FDE68A",
-  },
-  noticeTitle: {
-    color: "#92400E",
-    fontWeight: "900",
-    marginBottom: 6,
+    lineHeight: 20,
   },
   surveyBlock: {
-    marginTop: 15,
+    marginTop: 14,
   },
   scoreRow: {
     flexDirection: "row",
@@ -1315,16 +1658,16 @@ const styles = StyleSheet.create({
   },
   scoreButton: {
     flex: 1,
-    backgroundColor: "#E2E8F0",
-    paddingVertical: 12,
-    borderRadius: 14,
+    backgroundColor: "#e2e8f0",
+    paddingVertical: 11,
+    borderRadius: 12,
     alignItems: "center",
   },
   scoreButtonActive: {
-    backgroundColor: "#2563EB",
+    backgroundColor: "#2563eb",
   },
   scoreText: {
-    color: "#0F172A",
+    color: "#0f172a",
     fontWeight: "900",
   },
   scoreTextActive: {
@@ -1342,40 +1685,38 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   optionChip: {
-    backgroundColor: "#E2E8F0",
-    paddingHorizontal: 13,
-    paddingVertical: 11,
+    backgroundColor: "#e2e8f0",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     borderRadius: 999,
   },
   optionChipActive: {
-    backgroundColor: "#2563EB",
+    backgroundColor: "#2563eb",
   },
   optionText: {
-    color: "#0F172A",
+    color: "#0f172a",
     fontWeight: "900",
   },
   optionTextActive: {
     color: "white",
   },
   textArea: {
-    minHeight: 96,
-    backgroundColor: "#F8FAFC",
+    minHeight: 90,
+    backgroundColor: "#f8fafc",
     borderWidth: 1,
-    borderColor: "#CBD5E1",
-    borderRadius: 16,
-    padding: 13,
+    borderColor: "#cbd5e1",
+    borderRadius: 14,
+    padding: 12,
     textAlignVertical: "top",
-    color: "#0F172A",
+    color: "#0f172a",
     marginTop: 8,
   },
   surveyHint: {
-    color: "#92400E",
-    backgroundColor: "#FEF3C7",
-    padding: 12,
-    borderRadius: 15,
+    color: "#92400e",
+    backgroundColor: "#fef3c7",
+    padding: 10,
+    borderRadius: 14,
     marginTop: 12,
     lineHeight: 20,
-    borderWidth: 1,
-    borderColor: "#FDE68A",
   },
 });
