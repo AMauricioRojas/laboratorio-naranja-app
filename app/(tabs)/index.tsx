@@ -6,6 +6,7 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  Linking,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -17,7 +18,7 @@ import {
 const API = "https://multi-ia-alexa-backend.onrender.com";
 const LOGO = require("../../assets/images/nexo-logo.png");
 
-type ViewMode = "chat" | "history" | "alexa" | "survey";
+type ViewMode = "chat" | "history" | "alexa" | "survey" | "settings";
 type AuthMode = "login" | "register" | "verify" | "forgot" | "reset";
 
 export default function App() {
@@ -28,6 +29,10 @@ export default function App() {
   const [pendingEmail, setPendingEmail] = useState("");
   const [code, setCode] = useState("");
   const [newPassword, setNewPassword] = useState("");
+  const [acceptTerms, setAcceptTerms] = useState(false);
+  const [acceptPrivacy, setAcceptPrivacy] = useState(false);
+  const [adminKey, setAdminKey] = useState("");
+  const [adminSecretInput, setAdminSecretInput] = useState("");
 
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState(false);
@@ -48,6 +53,7 @@ export default function App() {
   const [surveyPreferred, setSurveyPreferred] = useState(true);
   const [surveyBestAi, setSurveyBestAi] = useState("auto");
   const [surveyComments, setSurveyComments] = useState("");
+  const [surveyConsent, setSurveyConsent] = useState(false);
 
   const showSurveyTab = surveyStatus?.reason !== "already_answered";
 
@@ -58,6 +64,11 @@ export default function App() {
   async function bootstrap() {
     try {
       const savedToken = await AsyncStorage.getItem("token");
+      const savedAdminKey = await AsyncStorage.getItem("nexo_admin_key");
+      if (savedAdminKey) {
+        setAdminKey(savedAdminKey);
+        setAdminSecretInput(savedAdminKey);
+      }
 
       if (savedToken) {
         setToken(savedToken);
@@ -154,13 +165,23 @@ export default function App() {
       return;
     }
 
+    if (!acceptTerms || !acceptPrivacy) {
+      Alert.alert("Aceptación requerida", "Debes aceptar los términos de uso y la política de privacidad para crear tu cuenta.");
+      return;
+    }
+
     setWorking(true);
 
     try {
       const res = await fetch(`${API}/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: cleanEmail, password }),
+        body: JSON.stringify({
+          email: cleanEmail,
+          password,
+          accept_terms: acceptTerms,
+          accept_privacy: acceptPrivacy,
+        }),
       });
 
       const data = await res.json();
@@ -389,6 +410,11 @@ export default function App() {
   }
 
   async function submitSurvey() {
+    if (!surveyConsent) {
+      Alert.alert("Consentimiento", "Acepta el uso académico anónimo para enviar la encuesta.");
+      return;
+    }
+
     setWorking(true);
 
     try {
@@ -402,6 +428,8 @@ export default function App() {
           preferred_use: surveyPreferred,
           best_ai: surveyBestAi,
           comments: surveyComments.trim(),
+          consent_academic: surveyConsent,
+          source: "mobile",
         }),
       });
 
@@ -410,6 +438,7 @@ export default function App() {
       if (data.ok) {
         Alert.alert("Gracias", "Tu encuesta fue guardada correctamente.");
         setSurveyComments("");
+        setSurveyConsent(false);
         await loadSurveyStatus();
         setView("chat");
       } else {
@@ -673,6 +702,103 @@ export default function App() {
     ]);
   }
 
+
+  async function unlockAdminMode() {
+    if (!adminSecretInput.trim()) {
+      Alert.alert("Clave requerida", "Escribe la clave admin.");
+      return;
+    }
+
+    setWorking(true);
+
+    try {
+      const res = await fetch(`${API}/admin/unlock`, {
+        method: "POST",
+        headers: authHeaders(token, true),
+        body: JSON.stringify({ admin_secret: adminSecretInput.trim() }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.ok) {
+        Alert.alert("No autorizado", data.error || "Clave admin incorrecta.");
+        return;
+      }
+
+      await AsyncStorage.setItem("nexo_admin_key", adminSecretInput.trim());
+      setAdminKey(adminSecretInput.trim());
+      Alert.alert("Listo", "Modo admin desbloqueado en este dispositivo.");
+    } catch {
+      Alert.alert("Error", wakeMessage());
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  async function clearAdminMode() {
+    await AsyncStorage.removeItem("nexo_admin_key");
+    setAdminKey("");
+    setAdminSecretInput("");
+    Alert.alert("Listo", "Modo admin bloqueado en este dispositivo.");
+  }
+
+  function openResearchPanel() {
+    if (!adminKey) {
+      Alert.alert("Modo admin", "Primero desbloquea el modo admin con la clave.");
+      return;
+    }
+
+    Linking.openURL(`${API}/admin/research`).catch(() => {
+      Alert.alert("Error", "No se pudo abrir el panel científico.");
+    });
+  }
+
+
+  function openLegal(path: string) {
+    Linking.openURL(`${API}${path}`).catch(() => {
+      Alert.alert("Error", "No se pudo abrir el enlace.");
+    });
+  }
+
+  async function deleteAccount() {
+    Alert.alert(
+      "Eliminar cuenta",
+      "Esta acción eliminará tu cuenta y datos asociados. ¿Quieres continuar?",
+      [
+        { text: "Cancelar", style: "cancel" },
+        {
+          text: "Eliminar",
+          style: "destructive",
+          onPress: async () => {
+            setWorking(true);
+            try {
+              const res = await fetch(`${API}/account`, {
+                method: "DELETE",
+                headers: authHeaders(),
+              });
+
+              const data = await res.json();
+
+              if (data.ok) {
+                await AsyncStorage.removeItem("token");
+                setToken(null);
+                setChatMessages([]);
+                setConversations([]);
+                Alert.alert("Listo", "Cuenta eliminada correctamente.");
+              } else {
+                Alert.alert("Error", data.error || "No se pudo eliminar la cuenta.");
+              }
+            } catch (error) {
+              Alert.alert("Error", wakeMessage());
+            } finally {
+              setWorking(false);
+            }
+          },
+        },
+      ]
+    );
+  }
+
   function newChat() {
     setConversationId(null);
     setChatMessages([]);
@@ -828,6 +954,22 @@ export default function App() {
                   secureTextEntry
                 />
 
+                <Pressable style={styles.consentBox} onPress={() => setAcceptTerms(!acceptTerms)}>
+                  <Text style={styles.consentText}>{acceptTerms ? "☑" : "☐"} Acepto los términos de uso.</Text>
+                </Pressable>
+                <Pressable style={styles.consentBox} onPress={() => setAcceptPrivacy(!acceptPrivacy)}>
+                  <Text style={styles.consentText}>{acceptPrivacy ? "☑" : "☐"} Acepto la política de privacidad.</Text>
+                </Pressable>
+
+                <View style={styles.authLinks}>
+                  <Pressable onPress={() => openLegal("/terms")}>
+                    <Text style={styles.linkText}>Leer términos</Text>
+                  </Pressable>
+                  <Pressable onPress={() => openLegal("/privacy")}>
+                    <Text style={styles.linkText}>Leer privacidad</Text>
+                  </Pressable>
+                </View>
+
                 <Pressable style={styles.primaryButton} onPress={register} disabled={working}>
                   <Text style={styles.buttonText}>{working ? "Creando..." : "Crear cuenta"}</Text>
                 </Pressable>
@@ -956,6 +1098,11 @@ export default function App() {
               </>
             )}
           </View>
+
+          <View style={styles.legalRow}>
+            <Pressable onPress={() => openLegal("/privacy")}><Text style={styles.legalLink}>Privacidad</Text></Pressable>
+            <Pressable onPress={() => openLegal("/terms")}><Text style={styles.legalLink}>Términos</Text></Pressable>
+          </View>
         </ScrollView>
       </SafeAreaView>
     );
@@ -1010,6 +1157,10 @@ export default function App() {
             <Text style={styles.navText}>Encuesta</Text>
           </Pressable>
         )}
+
+        <Pressable style={[styles.navBtn, view === "settings" && styles.navActive]} onPress={() => setView("settings")}>
+          <Text style={styles.navText}>Ajustes</Text>
+        </Pressable>
       </ScrollView>
 
       {view === "chat" && (
@@ -1234,6 +1385,10 @@ export default function App() {
               />
             </View>
 
+            <Pressable style={styles.consentBox} onPress={() => setSurveyConsent(!surveyConsent)}>
+              <Text style={styles.consentText}>{surveyConsent ? "☑" : "☐"} Acepto que mis respuestas se usen de forma anónima con fines académicos y de mejora del sistema Nexo IA.</Text>
+            </Pressable>
+
             <Pressable style={styles.primaryButton} onPress={submitSurvey} disabled={working}>
               <Text style={styles.buttonText}>{working ? "Guardando..." : "Enviar encuesta"}</Text>
             </Pressable>
@@ -1244,6 +1399,53 @@ export default function App() {
           </View>
         </ScrollView>
       )}
+
+      {view === "settings" && (
+        <ScrollView style={styles.content}>
+          <Text style={styles.sectionTitle}>Ajustes y privacidad</Text>
+          <View style={[styles.card, styles.settingsCard]}>
+            <Text style={styles.statusText}>Cuenta Nexo IA</Text>
+            <Text style={styles.mutedText}>Consulta documentos legales o elimina tu cuenta si ya no deseas usar el servicio.</Text>
+            <Pressable style={styles.legalButton} onPress={() => openLegal("/privacy")}>
+              <Text style={styles.legalButtonText}>Política de privacidad</Text>
+            </Pressable>
+            <Pressable style={styles.legalButton} onPress={() => openLegal("/terms")}>
+              <Text style={styles.legalButtonText}>Términos de uso</Text>
+            </Pressable>
+            <Pressable style={styles.dangerButton} onPress={deleteAccount} disabled={working}>
+              <Text style={styles.buttonText}>Eliminar mi cuenta</Text>
+            </Pressable>
+          </View>
+
+          <View style={[styles.card, styles.settingsCard]}>
+            <Text style={styles.statusText}>Modo desarrollador</Text>
+            <Text style={styles.mutedText}>Solo el equipo de Nexo IA puede desbloquear métricas, reportes y panel científico.</Text>
+            <TextInput
+              style={styles.settingsInput}
+              placeholder="ADMIN_SECRET"
+              placeholderTextColor="#64748b"
+              value={adminSecretInput}
+              onChangeText={setAdminSecretInput}
+              secureTextEntry
+            />
+            <Pressable style={styles.primaryButton} onPress={unlockAdminMode} disabled={working}>
+              <Text style={styles.buttonText}>{adminKey ? "Actualizar clave admin" : "Desbloquear modo admin"}</Text>
+            </Pressable>
+            {adminKey ? (
+              <>
+                <Text style={styles.successText}>Modo admin desbloqueado en este dispositivo.</Text>
+                <Pressable style={styles.researchButton} onPress={openResearchPanel}>
+                  <Text style={styles.researchButtonText}>Abrir panel científico web</Text>
+                </Pressable>
+                <Pressable style={styles.dangerButton} onPress={clearAdminMode}>
+                  <Text style={styles.buttonText}>Bloquear modo admin</Text>
+                </Pressable>
+              </>
+            ) : null}
+          </View>
+        </ScrollView>
+      )}
+
     </SafeAreaView>
   );
 }
@@ -1359,6 +1561,19 @@ const styles = StyleSheet.create({
     marginTop: 14,
     flexDirection: "row",
     justifyContent: "space-between",
+  },
+
+  legalRow: {
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: 14,
+    marginTop: 16,
+    flexWrap: "wrap",
+  },
+  legalLink: {
+    color: "#7dd3fc",
+    fontWeight: "900",
+    fontSize: 12,
   },
   app: {
     flex: 1,
@@ -1586,6 +1801,11 @@ const styles = StyleSheet.create({
     color: "#64748b",
     lineHeight: 20,
   },
+  successText: {
+    color: "#16a34a",
+    fontWeight: "900",
+    marginTop: 10,
+  },
   historyItem: {
     backgroundColor: "white",
     padding: 14,
@@ -1621,6 +1841,49 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     borderWidth: 1,
     borderColor: "#e2e8f0",
+  },
+  settingsCard: {
+    marginBottom: 14,
+    borderColor: "#dbe3f0",
+    shadowColor: "#0f172a",
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 2,
+  },
+  legalButton: {
+    backgroundColor: "#eef2ff",
+    borderColor: "#c7d2fe",
+    borderWidth: 1,
+    padding: 13,
+    borderRadius: 14,
+    marginTop: 10,
+    alignItems: "center",
+  },
+  legalButtonText: {
+    color: "#312e81",
+    fontWeight: "900",
+  },
+  settingsInput: {
+    backgroundColor: "#ffffff",
+    borderColor: "#cbd5e1",
+    borderWidth: 1,
+    color: "#0f172a",
+    padding: 13,
+    borderRadius: 14,
+    marginTop: 10,
+  },
+  researchButton: {
+    backgroundColor: "#ecfeff",
+    borderColor: "#67e8f9",
+    borderWidth: 1,
+    padding: 13,
+    borderRadius: 14,
+    marginTop: 10,
+    alignItems: "center",
+  },
+  researchButtonText: {
+    color: "#155e75",
+    fontWeight: "900",
   },
   cardLabel: {
     color: "#64748b",
@@ -1710,6 +1973,20 @@ const styles = StyleSheet.create({
     textAlignVertical: "top",
     color: "#0f172a",
     marginTop: 8,
+  },
+
+  consentBox: {
+    backgroundColor: "#e0f2fe",
+    borderColor: "#7dd3fc",
+    borderWidth: 1,
+    padding: 12,
+    borderRadius: 14,
+    marginTop: 14,
+  },
+  consentText: {
+    color: "#075985",
+    fontWeight: "800",
+    lineHeight: 20,
   },
   surveyHint: {
     color: "#92400e",
