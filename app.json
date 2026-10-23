@@ -2,7 +2,7 @@
   "expo": {
     "name": "Nexo IA",
     "slug": "nexo-ia",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "nexoia",
@@ -14,6 +14,7 @@
     },
     "android": {
       "package": "com.amauriciorojas.nexoia",
+      "versionCode": 2,
       "adaptiveIcon": {
         "backgroundColor": "#0F172A",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -40,11 +41,18 @@
             "backgroundColor": "#020617"
           }
         }
-      ]
+      ],
+      "expo-secure-store"
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "7ba4cde7-ce84-4297-9643-0f2223e021f3"
+      }
     }
   }
 }

@@ -1,0 +1,17 @@
+.git/
+node_modules/
+.expo/
+dist/
+web-build/
+.env
+.env.*
+credentials.json
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+docs/
+test-results/
+playwright-report/
+*.log

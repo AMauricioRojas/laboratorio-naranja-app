@@ -1,7 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaView } from "react-native-safe-area-context";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -15,14 +15,27 @@ import {
   View,
 } from "react-native";
 
-const API = "https://multi-ia-alexa-backend.onrender.com";
+import { PlanUsagePanel } from "../../components/plan-usage";
+import { usePlanUsage } from "../../hooks/use-plan-usage";
+import { AlexaConnection } from "../../components/alexa-connection";
+import { getSessionToken, saveSessionToken, clearSessionToken } from "../../lib/session-storage";
+import { questionRequestId, clearPendingQuestion } from "../../lib/pending-question";
+
+const API = process.env.EXPO_PUBLIC_API_URL || "https://multi-ia-alexa-backend.onrender.com";
 const LOGO = require("../../assets/images/nexo-logo.png");
 
-type ViewMode = "chat" | "history" | "alexa" | "survey" | "settings";
+type ViewMode = "chat" | "history" | "alexa" | "survey" | "settings" | "plan";
 type AuthMode = "login" | "register" | "verify" | "forgot" | "reset";
 
 export default function App() {
   const [token, setToken] = useState<string | null>(null);
+  const { usage, usageLoading, usageError, refreshUsage } = usePlanUsage(API, token);
+  const sendingQuestion = useRef(false);
+  const activeSession = useRef<string | null>(null);
+  function updateSession(next: string | null) {
+    activeSession.current = next;
+    setToken(next);
+  }
   const [authMode, setAuthMode] = useState<AuthMode>("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -31,8 +44,6 @@ export default function App() {
   const [newPassword, setNewPassword] = useState("");
   const [acceptTerms, setAcceptTerms] = useState(false);
   const [acceptPrivacy, setAcceptPrivacy] = useState(false);
-  const [adminKey, setAdminKey] = useState("");
-  const [adminSecretInput, setAdminSecretInput] = useState("");
 
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState(false);
@@ -63,15 +74,11 @@ export default function App() {
 
   async function bootstrap() {
     try {
-      const savedToken = await AsyncStorage.getItem("token");
-      const savedAdminKey = await AsyncStorage.getItem("nexo_admin_key");
-      if (savedAdminKey) {
-        setAdminKey(savedAdminKey);
-        setAdminSecretInput(savedAdminKey);
-      }
+      const savedToken = await getSessionToken();
+      await AsyncStorage.removeItem("nexo_admin_key");
 
       if (savedToken) {
-        setToken(savedToken);
+        updateSession(savedToken);
         await loadDashboard(savedToken);
       }
     } catch (error) {
@@ -100,7 +107,7 @@ export default function App() {
   }
 
   function wakeMessage() {
-    return "No se pudo conectar. Si el servidor estaba dormido, espera unos segundos e intenta de nuevo.";
+    return "No pudimos conectar con el servidor. Revisa tu conexión e intenta de nuevo más tarde.";
   }
 
   async function login() {
@@ -128,8 +135,9 @@ export default function App() {
       const data = await res.json();
 
       if (data.token) {
-        await AsyncStorage.setItem("token", data.token);
-        setToken(data.token);
+        await saveSessionToken(data.token);
+        setPassword("");
+        updateSession(data.token);
         await loadDashboard(data.token);
         return;
       }
@@ -341,8 +349,11 @@ export default function App() {
   }
 
   async function logout() {
-    await AsyncStorage.removeItem("token");
-    setToken(null);
+    await clearSessionToken();
+    updateSession(null);
+    sendingQuestion.current = false;
+    setWorking(false);
+    if (token) await clearPendingQuestion(token);
     setChatMessages([]);
     setConversations([]);
     setAlexaStatus(null);
@@ -354,6 +365,14 @@ export default function App() {
   async function loadDashboard(authToken = token) {
     if (!authToken) return;
 
+    const account = await fetch(`${API}/me`, { headers: authHeaders(authToken) });
+    if (activeSession.current !== authToken) return;
+    if (account.status === 401 || account.status === 403) {
+      await clearSessionToken();
+      updateSession(null);
+      setAuthMode("login");
+      return;
+    }
     await Promise.all([
       loadAlexaStatus(authToken),
       loadConversations(authToken),
@@ -370,9 +389,11 @@ export default function App() {
       });
 
       const data = await res.json();
+      if (activeSession.current !== authToken) return;
       setAlexaStatus(data);
     } catch (error) {
-      console.log("Alexa status error", error);
+      if (activeSession.current !== authToken) return;
+      setAlexaStatus({ error: "No pudimos consultar la conexión. Intenta actualizar el estado." });
     }
   }
 
@@ -385,6 +406,7 @@ export default function App() {
       });
 
       const data = await res.json();
+      if (activeSession.current !== authToken) return;
 
       if (Array.isArray(data)) {
         setConversations(data);
@@ -403,6 +425,7 @@ export default function App() {
       });
 
       const data = await res.json();
+      if (activeSession.current !== authToken) return;
       setSurveyStatus(data);
     } catch (error) {
       console.log("Survey status error", error);
@@ -477,34 +500,6 @@ export default function App() {
     }
   }
 
-  async function generateAlexaCode() {
-    setWorking(true);
-
-    try {
-      const res = await fetch(`${API}/alexa/generate-code`, {
-        method: "POST",
-        headers: authHeaders(token, true),
-        body: JSON.stringify({}),
-      });
-
-      const data = await res.json();
-
-      if (data.ok) {
-        Alert.alert(
-          "Código Alexa",
-          `Tu código es ${data.code}. Di: mi código es ${data.code}`
-        );
-        await loadAlexaStatus();
-      } else {
-        Alert.alert("Error", data.error || "No se pudo generar código.");
-      }
-    } catch (error) {
-      Alert.alert("Error", wakeMessage());
-    } finally {
-      setWorking(false);
-    }
-  }
-
   async function unlinkAlexa() {
     Alert.alert("Desvincular Alexa", "¿Seguro que quieres desvincular Alexa?", [
       { text: "Cancelar", style: "cancel" },
@@ -541,7 +536,18 @@ export default function App() {
   async function sendMessage() {
     const text = message.trim();
 
-    if (!text) return;
+    if (!text || !token || working || sendingQuestion.current) return;
+    sendingQuestion.current = true;
+    setWorking(true);
+    let requestId: string;
+    try {
+      requestId = await questionRequestId(token, { message: text, model: ia, conversation: conversationId });
+    } catch {
+      sendingQuestion.current = false;
+      setWorking(false);
+      Alert.alert("No se pudo preparar la consulta", "Revisa el espacio disponible del dispositivo e intenta de nuevo.");
+      return;
+    }
 
     const userMsg = {
       role: "user",
@@ -560,6 +566,7 @@ export default function App() {
         headers: authHeaders(token, true),
         body: JSON.stringify({
           mensaje: text,
+          request_id: requestId,
           ia,
           conversation_id: conversationId,
           source: "mobile",
@@ -567,8 +574,11 @@ export default function App() {
       });
 
       const data = await res.json();
+      if (activeSession.current !== token) return;
 
       if (data.error) {
+        if (["REQUEST_PENDING", "SAVE_PENDING", "PROVIDER_UNKNOWN", "CHAT_UNAVAILABLE"].includes(data.code)) setMessage(text);
+        else await clearPendingQuestion(token);
         setChatMessages((prev) => [
           ...prev,
           {
@@ -582,6 +592,7 @@ export default function App() {
         return;
       }
 
+      await clearPendingQuestion(token);
       setConversationId(data.conversation_id);
 
       setChatMessages((prev) => [
@@ -589,6 +600,7 @@ export default function App() {
         {
           role: "ai",
           mensaje: data.respuesta,
+          id: data.assistant_chat_id,
           ia: data.ia,
           source: data.source || "mobile",
           created_at: new Date().toISOString(),
@@ -598,6 +610,8 @@ export default function App() {
       await loadConversations();
       await loadSurveyStatus();
     } catch (error) {
+      if (activeSession.current !== token) return;
+      setMessage(text);
       setChatMessages((prev) => [
         ...prev,
         {
@@ -609,7 +623,11 @@ export default function App() {
         },
       ]);
     } finally {
-      setWorking(false);
+      if (activeSession.current === token) {
+        sendingQuestion.current = false;
+        setWorking(false);
+        void refreshUsage();
+      }
     }
   }
 
@@ -703,57 +721,6 @@ export default function App() {
   }
 
 
-  async function unlockAdminMode() {
-    if (!adminSecretInput.trim()) {
-      Alert.alert("Clave requerida", "Escribe la clave admin.");
-      return;
-    }
-
-    setWorking(true);
-
-    try {
-      const res = await fetch(`${API}/admin/unlock`, {
-        method: "POST",
-        headers: authHeaders(token, true),
-        body: JSON.stringify({ admin_secret: adminSecretInput.trim() }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok || !data.ok) {
-        Alert.alert("No autorizado", data.error || "Clave admin incorrecta.");
-        return;
-      }
-
-      await AsyncStorage.setItem("nexo_admin_key", adminSecretInput.trim());
-      setAdminKey(adminSecretInput.trim());
-      Alert.alert("Listo", "Modo admin desbloqueado en este dispositivo.");
-    } catch {
-      Alert.alert("Error", wakeMessage());
-    } finally {
-      setWorking(false);
-    }
-  }
-
-  async function clearAdminMode() {
-    await AsyncStorage.removeItem("nexo_admin_key");
-    setAdminKey("");
-    setAdminSecretInput("");
-    Alert.alert("Listo", "Modo admin bloqueado en este dispositivo.");
-  }
-
-  function openResearchPanel() {
-    if (!adminKey) {
-      Alert.alert("Modo admin", "Primero desbloquea el modo admin con la clave.");
-      return;
-    }
-
-    Linking.openURL(`${API}/admin/research`).catch(() => {
-      Alert.alert("Error", "No se pudo abrir el panel científico.");
-    });
-  }
-
-
   function openLegal(path: string) {
     Linking.openURL(`${API}${path}`).catch(() => {
       Alert.alert("Error", "No se pudo abrir el enlace.");
@@ -780,8 +747,8 @@ export default function App() {
               const data = await res.json();
 
               if (data.ok) {
-                await AsyncStorage.removeItem("token");
-                setToken(null);
+                await clearSessionToken();
+                updateSession(null);
                 setChatMessages([]);
                 setConversations([]);
                 Alert.alert("Listo", "Cuenta eliminada correctamente.");
@@ -799,7 +766,24 @@ export default function App() {
     );
   }
 
+  function reportResponse(chatId: number) {
+    async function sendReport(category: string) {
+      try {
+        const response = await fetch(`${API}/content-reports`, { method: "POST", headers: authHeaders(token, true),
+          body: JSON.stringify({ chat_id: chatId, category }) });
+        const data = await response.json();
+        Alert.alert(response.ok ? "Reporte recibido" : "No se pudo reportar", data.message || data.error || "Intenta de nuevo.");
+      } catch { Alert.alert("No se pudo reportar", wakeMessage()); }
+    }
+    Alert.alert("Reportar respuesta", "Elige el motivo para que el equipo revise esta respuesta.", [
+      { text: "Ofensiva o peligrosa", onPress: () => void sendReport("unsafe") },
+      { text: "Incorrecta", onPress: () => void sendReport("incorrect") },
+      { text: "Cancelar", style: "cancel" },
+    ]);
+  }
+
   function newChat() {
+    if (token) void clearPendingQuestion(token);
     setConversationId(null);
     setChatMessages([]);
     setView("chat");
@@ -1158,6 +1142,11 @@ export default function App() {
           </Pressable>
         )}
 
+        <Pressable accessibilityRole="button" style={[styles.navBtn, view === "plan" && styles.navActive]}
+          onPress={() => { setView("plan"); void refreshUsage(); }}>
+          <Text style={styles.navText}>Mi plan</Text>
+        </Pressable>
+
         <Pressable style={[styles.navBtn, view === "settings" && styles.navActive]} onPress={() => setView("settings")}>
           <Text style={styles.navText}>Ajustes</Text>
         </Pressable>
@@ -1166,7 +1155,7 @@ export default function App() {
       {view === "chat" && (
         <View style={styles.content}>
           <View style={styles.chatHeader}>
-            <Pressable style={styles.smallButton} onPress={newChat}>
+            <Pressable style={styles.smallButton} onPress={newChat} disabled={working}>
               <Text style={styles.smallButtonText}>Nuevo</Text>
             </Pressable>
 
@@ -1175,9 +1164,11 @@ export default function App() {
                 <Pressable
                   key={item}
                   style={[styles.iaChip, ia === item && styles.iaChipActive]}
+                  accessibilityState={{ disabled: Boolean(usage && item !== "auto" && !usage.allowed_models.some(model => model.id === item)) }}
+                  disabled={Boolean(usage && item !== "auto" && !usage.allowed_models.some(model => model.id === item))}
                   onPress={() => setIa(item)}
                 >
-                  <Text style={[styles.iaChipText, ia === item && styles.iaChipTextActive]}>{getIaLabel(item)}</Text>
+                  <Text style={[styles.iaChipText, ia === item && styles.iaChipTextActive]}>{getIaLabel(item)}{usage && item !== "auto" && !usage.allowed_models.some(model => model.id === item) ? " · Pro" : ""}</Text>
                 </Pressable>
               ))}
             </ScrollView>
@@ -1207,6 +1198,12 @@ export default function App() {
                   <Text style={[styles.bubbleText, item.role === "user" && styles.userBubbleText]}>
                     {item.mensaje}
                   </Text>
+
+                  {item.role !== "user" && Number.isSafeInteger(item.id) && (
+                    <Pressable accessibilityRole="button" accessibilityLabel="Reportar esta respuesta" onPress={() => reportResponse(item.id)}>
+                      <Text style={{ color: "#475569", fontSize: 12, marginTop: 12 }}>Reportar respuesta</Text>
+                    </Pressable>
+                  )}
 
                   <Text style={[styles.timeText, item.role === "user" && styles.userTimeText]}>
                     {formatDate(item.created_at)}
@@ -1268,40 +1265,7 @@ export default function App() {
 
       {view === "alexa" && (
         <ScrollView style={styles.content}>
-          <Text style={styles.sectionTitle}>Conexión con Alexa</Text>
-
-          <View style={styles.card}>
-            <Text style={styles.cardLabel}>Estado</Text>
-            <Text style={styles.statusText}>
-              {alexaStatus?.linked ? "✅ Alexa vinculada" : "❌ Alexa no vinculada"}
-            </Text>
-
-            {alexaStatus?.active_pair_code && (
-              <>
-                <Text style={styles.cardLabel}>Código temporal</Text>
-                <Text style={styles.codeText}>{alexaStatus.active_pair_code.code}</Text>
-                <Text style={styles.mutedText}>
-                  Di: mi código es {alexaStatus.active_pair_code.code}
-                </Text>
-              </>
-            )}
-
-            <Text style={styles.helpBox}>
-              Para abrir la skill di: “Alexa, abre nexo inteligente”.
-            </Text>
-
-            <Pressable style={styles.primaryButton} onPress={generateAlexaCode} disabled={working}>
-              <Text style={styles.buttonText}>Generar código Alexa</Text>
-            </Pressable>
-
-            <Pressable style={styles.secondaryButton} onPress={() => loadAlexaStatus()} disabled={working}>
-              <Text style={styles.buttonText}>Refrescar estado</Text>
-            </Pressable>
-
-            <Pressable style={styles.dangerButton} onPress={unlinkAlexa} disabled={working}>
-              <Text style={styles.buttonText}>Desvincular Alexa</Text>
-            </Pressable>
-          </View>
+          <AlexaConnection status={alexaStatus} refresh={() => loadAlexaStatus()} unlink={unlinkAlexa} working={working} />
         </ScrollView>
       )}
 
@@ -1400,6 +1364,12 @@ export default function App() {
         </ScrollView>
       )}
 
+      {view === "plan" && (
+        <ScrollView style={styles.content}>
+          <PlanUsagePanel usage={usage} loading={usageLoading} error={usageError} refresh={refreshUsage} />
+        </ScrollView>
+      )}
+
       {view === "settings" && (
         <ScrollView style={styles.content}>
           <Text style={styles.sectionTitle}>Ajustes y privacidad</Text>
@@ -1417,32 +1387,7 @@ export default function App() {
             </Pressable>
           </View>
 
-          <View style={[styles.card, styles.settingsCard]}>
-            <Text style={styles.statusText}>Modo desarrollador</Text>
-            <Text style={styles.mutedText}>Solo el equipo de Nexo IA puede desbloquear métricas, reportes y panel científico.</Text>
-            <TextInput
-              style={styles.settingsInput}
-              placeholder="ADMIN_SECRET"
-              placeholderTextColor="#64748b"
-              value={adminSecretInput}
-              onChangeText={setAdminSecretInput}
-              secureTextEntry
-            />
-            <Pressable style={styles.primaryButton} onPress={unlockAdminMode} disabled={working}>
-              <Text style={styles.buttonText}>{adminKey ? "Actualizar clave admin" : "Desbloquear modo admin"}</Text>
-            </Pressable>
-            {adminKey ? (
-              <>
-                <Text style={styles.successText}>Modo admin desbloqueado en este dispositivo.</Text>
-                <Pressable style={styles.researchButton} onPress={openResearchPanel}>
-                  <Text style={styles.researchButtonText}>Abrir panel científico web</Text>
-                </Pressable>
-                <Pressable style={styles.dangerButton} onPress={clearAdminMode}>
-                  <Text style={styles.buttonText}>Bloquear modo admin</Text>
-                </Pressable>
-              </>
-            ) : null}
-          </View>
+
         </ScrollView>
       )}
 
