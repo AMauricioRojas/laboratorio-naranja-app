@@ -1,10 +1,10 @@
-# Mi plan y consumo — 22 de octubre de 2026
+# Mi plan y consumo — 23 de octubre de 2026
 
 Rama de trabajo: `feature/planes-consumo`.
 
 La nueva vista **Mi plan** consulta `GET /me/usage` con la sesión existente. Muestra cupo disponible, consultas utilizadas y reservadas, restablecimiento en UTC, modelos incluidos y tokens informados por el proveedor. No contiene botones de compra ni precios.
 
-`use-plan-usage.ts` gestiona carga, errores, timeout e invalida respuestas de sesiones anteriores. `PlanUsagePanel` presenta la información. El chat mantiene el identificador de cada intento ante errores inciertos y muestra los modelos fuera del plan como Pro. El backend decide finalmente qué modelos permite.
+`use-plan-usage.ts` gestiona carga, errores, timeout e invalida respuestas de sesiones anteriores. `PlanUsagePanel` presenta la información. La sesión nativa usa SecureStore. El chat conserva el identificador de cada intento entre cierres y ante errores inciertos y muestra los modelos fuera del plan como Pro. El backend decide finalmente qué modelos permite.
 
 Para desarrollo se puede definir `EXPO_PUBLIC_API_URL`; si falta, se mantiene la dirección pública existente. No cambiarla a localhost en una compilación de distribución. En un teléfono real, localhost representa el teléfono y debe sustituirse por la dirección accesible de un backend de desarrollo.
 
@@ -16,4 +16,8 @@ La exportación desde el junction duplicó React y falló al renderizar; desde l
 
 Comprobaciones realizadas: TypeScript sin errores, lint de los dos módulos nuevos limpio, exportación web de Expo SDK 54 y revisión en navegador a 390 × 844 con datos sintéticos. Se probaron consumo normal, cupo agotado y error de servidor. La pantalla aún debe probarse en Android físico.
 
-El backend requiere la migración explícita `001-plans-consumption.sql`. No se modificó producción ni se activaron pagos. Suscripciones verificadas y Account Linking oficial de Alexa corresponden a los siguientes incrementos. Ver `Backend/docs/planes-consumo.md` para el contrato y los comandos de prueba.
+El backend de beta ya está desplegado con las migraciones `001-plans-consumption.sql` y `002-alexa-oauth.sql`. Account Linking oficial usa OAuth con PKCE y cada usuario autoriza la conexión desde Alexa. El panel de la app permite abrir Alexa, actualizar estado y revocar la conexión. Las respuestas admiten reportes. No se activaron pagos; las suscripciones verificadas siguen pendientes.
+
+La versión Android 1.0.1 (versionCode 2) está solicitada a EAS como APK interno y usa las credenciales remotas existentes. El perfil preview fija la URL HTTPS de Render. El backend pasa 52 pruebas aisladas y su comprobación pública confirma planes, OAuth y reportes. La prueba en Android físico sigue pendiente.
+
+El alojamiento Free puede arrancar lentamente tras inactividad. El envío real de correos sigue pendiente de proveedor, por lo que la beta está orientada a las cuentas recuperadas y verificadas. Ver `Backend/docs/planes-consumo.md` para el contrato y los comandos de prueba.
