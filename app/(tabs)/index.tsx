@@ -22,7 +22,7 @@ import { getSessionToken, saveSessionToken, clearSessionToken } from "../../lib/
 import { questionRequestId, clearPendingQuestion } from "../../lib/pending-question";
 
 const API = process.env.EXPO_PUBLIC_API_URL || "https://multi-ia-alexa-backend.onrender.com";
-const LOGO = require("../../assets/images/nexo-logo.png");
+const LOGO = require("../../assets/images/zuneri-logo.png");
 
 type ViewMode = "chat" | "history" | "alexa" | "survey" | "settings" | "plan";
 type AuthMode = "login" | "register" | "verify" | "forgot" | "reset";
@@ -859,7 +859,7 @@ export default function App() {
         <ScrollView contentContainerStyle={styles.loginScroll}>
           <View style={styles.heroCard}>
             <Image source={LOGO} style={styles.authLogo} />
-            <Text style={styles.title}>Nexo IA</Text>
+            <Text style={styles.title}>Zuneri</Text>
             <Text style={styles.subtitle}>
               Voz, web y app conectadas con inteligencia artificial.
             </Text>
@@ -1097,7 +1097,7 @@ export default function App() {
       <SafeAreaView style={styles.center}>
         <StatusBar style="light" backgroundColor="#020617" />
         <ActivityIndicator size="large" color="#38bdf8" />
-        <Text style={styles.loadingText}>Cargando Nexo IA...</Text>
+        <Text style={styles.loadingText}>Cargando Zuneri...</Text>
       </SafeAreaView>
     );
   }
@@ -1113,7 +1113,7 @@ export default function App() {
         <View style={styles.brandRow}>
           <Image source={LOGO} style={styles.logoMini} />
           <View>
-            <Text style={styles.appTitle}>Nexo IA</Text>
+            <Text style={styles.appTitle}>Zuneri</Text>
             <Text style={styles.appSubtitle}>Alexa + Web + App + IA</Text>
           </View>
         </View>
@@ -1178,9 +1178,9 @@ export default function App() {
             {chatMessages.length === 0 ? (
               <View style={styles.emptyBox}>
                 <Image source={LOGO} style={styles.emptyLogo} />
-                <Text style={styles.emptyTitle}>Pregunta desde Nexo IA</Text>
+                <Text style={styles.emptyTitle}>Pregunta desde Zuneri</Text>
                 <Text style={styles.emptyText}>
-                  También puedes usar Alexa diciendo: “Alexa, abre nexo inteligente”.
+                  También puedes usar Alexa diciendo: “Alexa, abre zuneri inteligente”.
                 </Text>
               </View>
             ) : (
@@ -1274,7 +1274,7 @@ export default function App() {
           <Text style={styles.sectionTitle}>Encuesta de experiencia</Text>
 
           <View style={styles.card}>
-            <Text style={styles.statusText}>📊 Evaluación de Nexo IA</Text>
+            <Text style={styles.statusText}>📊 Evaluación de Zuneri</Text>
 
             <Text style={styles.mutedText}>
               Esta encuesta ayuda a medir si Alexa mejora al conectarse con modelos de IA.
@@ -1293,7 +1293,7 @@ export default function App() {
             {renderScoreSelector("Utilidad general", surveyUsefulness, setSurveyUsefulness)}
 
             <View style={styles.surveyBlock}>
-              <Text style={styles.cardLabel}>¿Preferirías usar Alexa con Nexo IA?</Text>
+              <Text style={styles.cardLabel}>¿Preferirías usar Alexa con Zuneri?</Text>
 
               <View style={styles.optionRow}>
                 <Pressable
@@ -1350,7 +1350,7 @@ export default function App() {
             </View>
 
             <Pressable style={styles.consentBox} onPress={() => setSurveyConsent(!surveyConsent)}>
-              <Text style={styles.consentText}>{surveyConsent ? "☑" : "☐"} Acepto que mis respuestas se usen de forma anónima con fines académicos y de mejora del sistema Nexo IA.</Text>
+              <Text style={styles.consentText}>{surveyConsent ? "☑" : "☐"} Acepto que mis respuestas se usen de forma anónima con fines académicos y de mejora del sistema Zuneri.</Text>
             </Pressable>
 
             <Pressable style={styles.primaryButton} onPress={submitSurvey} disabled={working}>
@@ -1374,7 +1374,7 @@ export default function App() {
         <ScrollView style={styles.content}>
           <Text style={styles.sectionTitle}>Ajustes y privacidad</Text>
           <View style={[styles.card, styles.settingsCard]}>
-            <Text style={styles.statusText}>Cuenta Nexo IA</Text>
+            <Text style={styles.statusText}>Cuenta Zuneri</Text>
             <Text style={styles.mutedText}>Consulta documentos legales o elimina tu cuenta si ya no deseas usar el servicio.</Text>
             <Pressable style={styles.legalButton} onPress={() => openLegal("/privacy")}>
               <Text style={styles.legalButtonText}>Política de privacidad</Text>

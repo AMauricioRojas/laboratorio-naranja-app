@@ -9,12 +9,12 @@ export function AlexaConnection({ status, refresh, unlink, working }: {
     <Text accessibilityRole="header" style={styles.title}>Conecta Alexa con tu cuenta</Text>
     <Text style={styles.status}>{status?.error ? 'Estado no disponible' : status === null ? 'Consultando conexión…' : status.linked ? 'Alexa vinculada' : 'Alexa pendiente de vinculación'}</Text>
     {status?.error && <Text accessibilityRole="alert" style={styles.notice}>{status.error}</Text>}
-    <Text style={styles.body}>Usa la misma cuenta de Nexo IA para compartir tu historial y el cupo de consultas.</Text>
-    <Text style={styles.body}>1. Abre la app de Alexa y busca Nexo IA en tus skills.</Text>
-    <Text style={styles.body}>2. Pulsa Vincular cuenta. Inicia sesión en Nexo IA y autoriza la conexión.</Text>
+    <Text style={styles.body}>Usa la misma cuenta de Zuneri para compartir tu historial y el cupo de consultas.</Text>
+    <Text style={styles.body}>1. Abre la app de Alexa y busca Zuneri en tus skills.</Text>
+    <Text style={styles.body}>2. Pulsa Vincular cuenta. Inicia sesión en Zuneri y autoriza la conexión.</Text>
     <Text style={styles.body}>3. Vuelve aquí y pulsa Actualizar conexión.</Text>
     {!status?.official_linking_available && <Text style={styles.notice}>La conexión oficial estará disponible cuando el servidor y la skill tengan activada esta versión.</Text>}
-    <Text style={styles.body}>Para hablar con la skill di: “Alexa, abre nexo inteligente”.</Text>
+    <Text style={styles.body}>Para hablar con la skill di: “Alexa, abre zuneri inteligente”.</Text>
     <Text style={styles.small}>Durante la beta, la skill en desarrollo está disponible para las cuentas autorizadas de prueba.</Text>
     <Pressable accessibilityRole="button" style={styles.button} onPress={() => void Linking.openURL('https://alexa.amazon.com').catch(() => Alert.alert('Abre Alexa', 'No pudimos abrir el enlace. Abre la app de Alexa en tu teléfono.'))}>
       <Text style={styles.buttonText}>Abrir Alexa</Text>
